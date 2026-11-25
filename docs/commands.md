@@ -31,13 +31,14 @@ BLE 沒有加密，範圍內的任何人都能連線與控制播放，這是設�
 
 | 指令 | 說明 |
 |---|---|
-| `play <路徑或資料夾>` | 檔案、資料夾（連續播放）、`.zip`（當資料夾走進去，`<zip>/<項目>` 也可） |
+| `play <路徑或資料夾>` | 檔案、資料夾（連續播放）、`.zip`（當資料夾走進去，`<zip>/<項目>` 也可）。回覆 `play: ESP_OK`，或 `play: <esp 錯誤名>`；單一 VGM 含 GME 不會播的晶片時是 `play: ESP_ERR_NOT_SUPPORTED unsupported chip YM2151, OKIM6295`。資料夾、播放清單、zip 內打不開或被拒絕的檔會被跳過，`events` 多一行 `skip <檔名>: chip YM2151`（或 GME 的理由） |
 | `stop`、`pause`、`resume` | 待機時 `resume` 從書籤（上次停止的位置）接著播 |
 | `next`、`prev` | 多曲檔（晶片音樂）先在檔內換曲 |
 | `vol [0-100]` | 目前輸出的音量（每種輸出各自記住），不會超過 `vollimit` |
 | `vollimit [0-100]` | 音量上限，預設 100，任何路徑都不會超過 |
 | `mode folder\|shuffle\|one\|once` | 資料夾循環、隨機、單曲重複、播完停止 |
 | `gapless [on\|off]` | 無縫播放（同取樣率、同輸出時），預設開 |
+| `expfmt [on\|off]` | 「實驗性」tracker／AdLib 格式（a2m a2t d00 sa2 …，見 `pc_chipseq.c`）：預設開，下一個檔起生效 |
 | `rg [off\|track\|album]` | 依標籤套用 ReplayGain，下一首起生效 |
 | `ls [路徑]` | 列出資料夾（預設 `/sdcard`）；資料夾與 `.zip` 結尾加 `/` |
 | `lrc` | 把播放中曲目的同名 `.lrc` 以 base64 分行送出（`lrc begin <bytes>`、`lrc+ <base64>`…、`lrc end`；沒有則 `lrc none`），由網頁解析與對時 |

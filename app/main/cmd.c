@@ -319,7 +319,10 @@ static void h_play(o_t *o, char *args)
     if (!need_args(o, args)) return;
     strlcpy(g_set.last, args, sizeof g_set.last);
     nsn_settings_save();
-    say(o, "play: %s", esp_err_to_name(nsn_player_play(args)));
+    char why[40];
+    esp_err_t e = nsn_player_play_why(args, why, sizeof why);
+    if (e == ESP_ERR_NOT_SUPPORTED && why[0]) say(o, "play: ESP_ERR_NOT_SUPPORTED unsupported chip %s", why);   /* the page reads the first word as the error name and shows the text it knows for it */
+    else say(o, "play: %s", esp_err_to_name(e));
 }
 
 static void h_radio(o_t *o, char *args)
@@ -578,6 +581,16 @@ static void h_gapless(o_t *o, char *args)
         else { say(o, "gapless on|off"); return; }
     }
     say(o, "gapless %s", nsn_player_gapless() ? "on" : "off");
+}
+
+/* expfmt [on|off]: the AdLib / tracker readers of pc_chipseq's experimental tier (a2m a2t d00 sa2 ...): on by default, applies from the next file */
+static void h_expfmt(o_t *o, char *args)
+{
+    if (args && args[0]) {
+        if (!strcmp(args, "on") || !strcmp(args, "off")) nsn_player_set_expfmt(args[1] == 'n');
+        else { say(o, "expfmt on|off"); return; }
+    }
+    say(o, "expfmt %s", nsn_player_expfmt() ? "on" : "off");
 }
 
 /* dacmax [auto|<rate>]: the highest sample rate the USB DAC is asked to run at. Tracks above it are resampled down (an exact halving where there is one,
@@ -915,6 +928,7 @@ static const cmd_t k_cmds[] = {
     { "vol",     h_vol,     false },
     { "vollimit", h_vollimit, false },
     { "gapless", h_gapless, false },
+    { "expfmt",  h_expfmt,  false },
     { "dacmax",  h_dacmax,  false },
     { "ratetest", h_ratetest, false },
     { "dbg",     h_dbg,     true  },

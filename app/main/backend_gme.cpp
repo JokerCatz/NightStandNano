@@ -36,7 +36,7 @@ static_assert(std::is_same<Ym2612_Emu, Ym2612_GENS_Emu>::value, "gme headers mus
 
 #define RATE 44100
 
-struct gme_h { Music_Emu *emu; int track; int32_t len_ms; uint32_t mask; };   /* mask: the voice mute mask gme was given (pc_vmute) */
+struct gme_h { Music_Emu *emu; int track; int32_t len_ms; uint32_t mask; char song[96], author[96], game[96]; };   /* song / author / game: the tags of the playing tune */   /* mask: the voice mute mask gme was given (pc_vmute) */
 
 /* --- per-voice levels ---
  * One snapshot (322 bytes in PSRAM since the 2026-11-17 voice snapshot v2: pitch, key-on counter, pan; 32 voices), written by the audio task after every gme_play, read by the
@@ -330,6 +330,11 @@ static void mute_apply(gme_h *g)
 }
 
 extern "C" int backend_gme_voices(pc_voices_t *out) { return pc_voice_read(&s_voices, out); }
+extern "C" void backend_gme_tags(void *h, char *song, size_t sn, char *author, size_t an, char *game, size_t gn)
+{
+    const gme_h *g = (const gme_h *)h;
+    snprintf(song, sn, "%s", g->song); snprintf(author, an, "%s", g->author); snprintf(game, gn, "%s", g->game);
+}
 extern "C" void backend_gme_kss_fm(int on) { Kss_Emu::fm_off = on == 0; }
 
 static int start(gme_h *g, int idx)
@@ -337,7 +342,13 @@ static int start(gme_h *g, int idx)
     if (gme_start_track(g->emu, idx)) return -1;
     gme_info_t *info = nullptr;
     int32_t len = -1;
-    if (!gme_track_info(g->emu, &info, idx) && info) { len = info->play_length; gme_free_info(info); }
+    g->song[0] = g->author[0] = g->game[0] = 0;
+    if (!gme_track_info(g->emu, &info, idx) && info) {
+        len = info->play_length;
+        snprintf(g->song, sizeof g->song, "%s", info->song ? info->song : ""); snprintf(g->author, sizeof g->author, "%s", info->author ? info->author : "");
+        snprintf(g->game, sizeof g->game, "%s", info->game ? info->game : "");
+        gme_free_info(info);
+    }
     g->len_ms = pc_chip_length_ms(len);
     g->track = idx;
     if (s_owner == g) {
@@ -348,13 +359,18 @@ static int start(gme_h *g, int idx)
     return 0;
 }
 
+static char s_err[48];                                        /* why the last open failed (GME's own words), "" = none */
+extern "C" const char *backend_gme_error(void) { return s_err; }
+
 static int g_open(void **h, const pc_reader_t *r, uint32_t start_off)
 {
+    s_err[0] = 0;
     if (!r->mem.p || r->u == nullptr || start_off >= r->size) return -1;
     gme_h *g = (gme_h *)calloc(1, sizeof *g);
     if (!g) return -1;
-    if (gme_open_data(r->mem.p + start_off, (long)(r->size - start_off), &g->emu, RATE) || !g->emu) { free(g); return -1; }
-    if (start(g, 0)) { gme_delete(g->emu); free(g); return -1; }
+    const char *e = gme_open_data(r->mem.p + start_off, (long)(r->size - start_off), &g->emu, RATE);
+    if (e || !g->emu) { snprintf(s_err, sizeof s_err, "%s", e ? e : "unknown"); free(g); return -1; }
+    if (start(g, 0)) { snprintf(s_err, sizeof s_err, "cannot start the first tune"); gme_delete(g->emu); free(g); return -1; }
     *h = g;
     return 0;
 }

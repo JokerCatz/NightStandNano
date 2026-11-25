@@ -17,7 +17,7 @@ set(PC_SRCS
     "src/pc_lowrate.c" "src/pc_mp4.c" "src/pc_noisegen.c" "src/pc_preset.c"
     "src/pc_radio.c" "src/pc_rate.c" "src/pc_rg.c" "src/pc_ring.c"
     "src/pc_rsq.c" "src/pc_stream.c" "src/pc_toml.c" "src/pc_ts.c" "src/pc_utf.c"
-    "src/pc_vmute.c" "src/pc_voice.c" "src/pc_volsel.c" "src/pc_zip.c")
+    "src/pc_vgmhdr.c" "src/pc_vmute.c" "src/pc_voice.c" "src/pc_volsel.c" "src/pc_zip.c")
 idf_component_register(SRCS ${PC_SRCS} INCLUDE_DIRS "include" "third_party/dr_flac" PRIV_INCLUDE_DIRS "third_party/minimp3" "third_party/miniz" "third_party/tomlc99" "src" PRIV_REQUIRES libxmp libmpcdec libtta libhvl libcrsid libadplug)
 # player_core does not include sdkconfig.h: the switch reaches its sources as a plain define
 if(CONFIG_FX_VELVET_ROOM)

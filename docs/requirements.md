@@ -11,7 +11,7 @@
 | A1 | TF 卡檔案播放，FAT32 與 exFAT，資料夾連續播放、上一首／下一首 | round, nightstand | P1 | 部分：FAT32 完成；exFAT 只有 RAM disk 實測 | 自動；真 exFAT 卡要人插卡 |
 | A2 | 格式：mp3 flac wav aiff mpc tta | round, chipchill | P1 | 完成（wav mp3 flac aiff 用 ffmpeg 產生的檔案實測，0 underrun；mpc tta 未測） | 自動（需要測試檔） |
 | A3 | 格式：aac / m4a / ogg / opus | round (`backend_sdec`), chipchill | P1 | 完成（.aac .ogg .opus .m4a 用 ffmpeg 產生的檔案實測，0 underrun） | 自動 |
-| A4 | 晶片音樂：gme（NES/GB/SNES…）、xmp tracker、sid、opl、hvl、ym、vgm | round, chipchill, JukeChip | **P1（主人 2026-11-24）** | **完成：vgm vgz（GME）、mod（libxmp）實測；nsf gbs spc gym hes kss sap ay sid opl ym p8 ahx 已接線、未測（沒有檔案）；多曲目自動接續** | 自動（需要測試檔） |
+| A4 | 晶片音樂：gme（NES/GB/SNES…）、xmp tracker、sid、opl、hvl、ym、vgm | round, chipchill, JukeChip | **P1（主人 2026-11-24）** | **完成（2026-11-25 逐格式實測，表見文末「晶片／tracker 格式實測」）：nsf（含 VRC6 / VRC7 / N163 / MMC5 / FDS / 5B）gbs hes kss sap sid ay ym ahx hvl vgz mod xm s3m it rad hsc d00 a2m amd sa2 都用真檔播過；nsfe 只有合成檔；沒有測試檔所以沒測：spc gym p8 與大部分冷門 tracker／AdLib 副檔名。已知不能播：SAP TYPE D、A2M v9–11、RSID 中靠真 C64 時序的曲子、含 GME 不支援晶片的 VGM（現在明確拒絕並說出晶片）** | 自動（已做）；聽感要人 |
 | A5 | 網路電台 MP3（http/https、ICY 歌名、.pls .m3u） | round, nightstand | P1 | 完成 | 自動 |
 | A6 | 網路電台 AAC / Ogg / HLS、電台清單檔 `radio.txt`、備援網址 | round | P1 | **部分：AAC 實測（SomaFM，0 underrun）、`radio.txt` 與備援網址實測（主網址失效自動換備援）、依串流內容偵測格式；Ogg 已接線未測；HLS 不做** | 自動 |
 | A7 | **手機藍牙串流進來，輸出到小尾巴**（A2DP sink → USB DAC），SBC / AAC | round（喇叭模式） | P1 | **完成（以 round 當手機，AAC，串流 92 秒 0 underrun；真手機未測）** | 自動（對 round）；真手機要人 |
@@ -166,3 +166,44 @@
   - 連線重用：同一個 `esp_http_client` handle 的 `set_url` 在同主機時保留連線，https 串流 20 分鐘只做 1 次 TLS 握手（關掉重用：約每分鐘 20 次）。
   - Auracast＋https HLS＋BLE 頻譜可以同時用（內部 RAM 59.6 KB、最大區塊 31 KB、斷音 0）；數字在 `docs/measurements.md`。
   - 未驗證：`https: low memory` 的拒絕路徑（找不到安全造出該記憶體狀況的方法）；AC-3 的 TS 分段（只用假清單驗證到 `HLS: unsupported audio` 的清單層級，沒有真的 AC-3 串流）；聲音聽感（沒有麥克風，只看速率、`pos` 前進、斷音計數）；SAMPLE-AES 真串流；時間化 ID3（TS 裡的歌名）沒有擷取（JukeDial 也沒有），只用 `#EXTINF` 歌名；裸 `.ts` 串流（無清單）會回 `HLS: bare TS stream not supported`。
+
+## 2026-11-25 晶片／tracker 格式實測（`nsn_chip/<格式>/`，板上，輸出端檢查 `dbg oc`）
+方法：每個檔播約 6 秒，記下解碼器名稱、速率、長度、曲目數、`title`/`artist`、`pos` 是否前進、`und`、輸出檢查的 `maxpeak`（0 = 數位靜音）與 `starved`；多曲檔再 `next` 兩次、`prev` 一次。測試檔是私人收藏（`~/self/ESP32S31_round/.local/chiplib/free/`），不進 git，測完已從卡上清掉，只各留一個小檔給主人試聽。解碼器本身不重測（主人裁定），只看 Nano 的整合：副檔名對應、載入、曲目、標籤、zip、狀態。
+| 格式 | 試的檔案 | 結果 |
+|---|---|---|
+| nsf | japan（VRC6）、BoBombBattlefield（FDS）、radiozonde celestial elegy（MMC5）、energy breaker（N163）、bass samples king（VRC7）、t to s（VRC6+VRC7+MMC5+N163+5B）、3-n163_vrc6（N163+VRC6）、Danish Mega Pony（12 曲）、lan master（4 曲） | 全部出聲（maxpeak 1.5 k–13.8 k）、斷音 0、`pos` 前進；沒有長度資料 → 150 s；`next`／`prev` 在檔內換曲（2/12、3/12…）；title／artist 取自檔頭（曲名或遊戲名、作者） |
+| nsfe | 只有合成檔：`tools/hosttest/mk_nsfe.py` 由 NSF 轉成（含 time／auth／tlbl 區塊），lan_short（4 曲）、pony_short（12 曲） | 出聲；長度取自 time 區塊（3 s + GME 的 8 s 淡出）；曲名來自 tlbl（`Track 2`…），artist 來自 auth。**沒有真的 NSFE 檔** |
+| gbs | cpl gbc intro 6、knark、mental respirator（3 曲） | 出聲、斷音 0；3 曲換曲正確；title／artist 有（`Mental Respirator`／`Goto80, Mr. Death`） |
+| hes | 1941 counter attack (sgx)、ropm 02 | 出聲、斷音 0。**曲目數一律 256**（HES 檔頭沒有曲數，GME 取 256），`next` 會走到空的曲號；沒有標籤。1941 的前兩個曲號是空的，約 3 秒內自動跳過 |
+| kss | 2001 a space odyssey、ind revolution、nemesis gametune | 出聲（MSX-MUSIC 的 YM2413 預設開，見 CPU 表）、斷音 0；曲目數 256（同 HES）；沒有標籤。`next` 造成的斷音計數已修（見下） |
+| sap | ABBUC JHV 2002 2（3 曲）、Electra（4 曲）、Pixel | 前兩個出聲，每曲長度取自 TIME 行（53.9 / 61.6 / 2.4 s）；title／artist 有。**Pixel 是 TYPE D（GME 的「Digimusic」），GME 不支援**：不播，日誌與 `events` 寫 `Digimusic not supported`（資料庫 77 個 SAP 裡 10 個是 TYPE D） |
+| sid | 15 Years Oxyron（2 曲）、Santas Little Helper（3 曲）、Crank Powered Async Loader（2SID）、Light Years（3SID）、Stereophonik（RSID，2SID） | 前四個出聲；固定 180 s（沒有 Songlengths）；title／artist／album（= released）取自檔頭。**Stereophonik 是靜音**（maxpeak 0）：PC 上用同一份 cRSID 原始碼（`components/libcrsid`）渲染 30 秒峰值也只有 2，是解碼器不模擬那首 RSID 靠的真 C64 行為，不是 Nano 的問題 |
+| ay | interchrome（2 曲）、acoustic dreams（10 曲） | 出聲；每曲各有曲名（`Agent-X`、`H-Core`…）、作者；`next`／`prev` 正確 |
+| ym | lap2、ooh yeah、decade demo - boot（都是 LHA 壓縮的 YM） | 出聲，長度已知（46 / 100 / 261 s）；沒有標籤（檔頭被壓縮，Nano 沒讀） |
+| ahx / hvl | vhs-binge、virgin-style / postmortem1、waiting for a message | 出聲，長度 23–77 s，title 有 |
+| vgz（SN76489） | 12 bar blues、hitting enter、stormy changes、short motif、lizards forest、boss ix（資料庫 20 個 vgz 都過了主機端標頭檢查，見下） | 都出聲、斷音 0；GD3 標籤（曲名、作者）有；與 zip 內的 vgz 一樣 |
+| mod / xm / s3m / it | random voice monday、giel / jt strng、radix unreal superhero / overdriv、ZAK / 1 channel moog、beek substitutionology | 都出聲（`MOD` 解碼器 = libxmp）、斷音 0；title 取自檔頭（Nano 自己讀，見下） |
+| rad / hsc / amd | backlash、christmas song / hardc1 / cosmos-theme | 出聲（`OPL` = AdPlug），長度已知；沒有標籤 |
+| d00 / sa2 | ergo、jungle / fairy tale | **原本打不開**：這些是 pc_chipseq「實驗性」層，Nano 從沒註冊開關所以永遠被拒絕。現在預設開（`expfmt on|off`），三個檔都出聲 |
+| a2m | adventure（v5）、drgwrrtt（v13）、step1856（v12）；15 minute compo trial（v11）、ballad（v9） | v5、v12、v13 出聲；**v9–v11 拒絕**（AdPlug 2.4 不支援 aPlib 壓縮；資料庫 15 個中 8 個是 v9–11） |
+| zip | `pack.zip` 內 nsf、gbs（子資料夾）、sid、vgz、mod；整包當播放清單 | 單檔、整包都正常：標籤、曲目、順播（`gapless:` 行）、`ls pack.zip`、`ls pack.zip/sub` |
+| 沒有測試檔 | spc、gym、p8（含 p8.png）、真的 nsfe；tracker 副檔名 stm okt med ptm far 669 mtm ult amf dbm gdm … 與 AdLib 副檔名 imf wlf a2t cmf adl ksm mdi sci dro lds rol … | 只有接線（`backend_for` 與 pc_chipseq 表）；沒有檔案，沒測 |
+| 其它 | resume 書籤、shuffle、順播 | 見下 |
+
+**整合行為（板上）**
+- 續播：以前停在晶片檔上不會記書籤（沒有位元組位置），`resume` 會去播很久以前的舊書籤（實際發生：播到無關的 mp3）。現在晶片檔、SID、tracker 都會記書籤：GME 與 SID 記**曲號**，tracker／AdLib／YM／P8 記檔案（從頭播）；NSF 第 3 曲停止 → `resume` 回到第 3 曲，SID 第 2 曲、zip 內的 SID、mod 都驗過。
+- 順播（gapless）：同速率的晶片檔之間接續正常（`gapless:` 行，打開約 170 ms、環形緩衝還剩 380 ms），`dbg oc` 接點列出、接點處沒有額外斷音。
+- shuffle：混合資料夾（15 個檔、10 種格式）`next` 14 次 + 自然結束，沒有當機、斷音 0；曲目多的檔先走完檔內曲目再換檔。
+- 修掉的整合錯誤：(1) 實驗性層永遠被拒（d00 a2m sa2 …）；(2) 晶片檔沒有 title／artist；(3) `resume` 對晶片檔沒用；(4) 檔內 `next` 的重新填充被算成斷音（`und` 暴增）；(5) 順播接到打不開的檔時，同一個檔被打開兩次；(6) `.vgm` 其實是 gzip、`.vgz` 其實沒壓縮的檔打不開；(7) 打不開的原因只寫 `decoder open failed`，現在 GME 的理由也寫進日誌與 `events`。
+
+**VGM：GME 靜音播放不支援的晶片（2026-11-25 修）**
+- 驗證（舊韌體）：YM2151 的 VGM → `play: ESP_OK`、`Chip 44100 Hz`、`maxpeak=0`（數位靜音）；SN76489 + YM2151 → 只播 PSG 那一半，沒有任何警告。
+- 現在播檔前先看 VGM 標頭（`components/player_core/src/pc_vgmhdr.c`）：GME 會播的是 SN76489（含雙晶片、T6W28）、YM2612、YM2413（YM2612 與 YM2413 同時存在時 GME 只播 YM2612，所以這對組合算 YM2413 不支援）。含其他晶片、且指令串流真的寫了它（宣告了時脈但從沒寫過的不算）→ 拒絕。
+- 單檔 `play`：`play: ESP_ERR_NOT_SUPPORTED unsupported chip YM2151, OKIM6295`（第一個字仍是 esp 錯誤名，舊版網頁顯示「不支援這種格式」）；原本在播的東西不受影響。資料夾、播放清單、zip 內：該檔被跳過，日誌 `skip <路徑>: chip YM2151`，`events` 多一行 `skip <檔名>: chip YM2151`；全部都被拒絕時照舊 `nothing playable`。
+
+| 測試檔（`tools/hosttest/gen_vgm_cases.py` 產生，27 個、共約 6 KB） | 結果 |
+|---|---|
+| ok_psg_v171 / v150_garbage（v1.50，0x40 之後是亂碼）/ v150_hdr40 / v101 / dual_t6w28 / plain_named.vgz（沒壓縮）/ gz_named.vgm（有壓縮）/ v171.vgz | 全部出聲（maxpeak 2415、T6W28 雙晶片 1482） |
+| ok_declared_unused（宣告 YM2151、OKIM6295，只寫 PSG）、ok_ym2413、ok_ym2612 | 出聲（431 / 6928） |
+| refuse_YM2151、YM2203、SN76489_YM2151、YM2151_OKIM6295、v100_shared_clock_YM2151（v1.00 共用時脈，由指令判斷）、YM2612_YM2413、YM2608_YM2610B、YM2151.vgz | 都拒絕，晶片名如檔名 |
+| bad_header_only / 10_bytes / empty / not_vgm / cut_in_command / not_gzip.vgz / gzip_cut.vgz / header_0x100_only | 不當機；`decoder open failed`（附 GME 的理由）或播空曲 |

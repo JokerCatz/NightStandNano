@@ -8,6 +8,7 @@
 
 /* File -> decoder (JukeDial player_core pc_backend_t) -> S16 ring -> USB DAC. One track at a time for now. */
 esp_err_t nsn_player_play(const char *path);      /* async; replaces the current track */
+esp_err_t nsn_player_play_why(const char *path, char *why, size_t n);   /* same; a VGM refused for its chips returns ESP_ERR_NOT_SUPPORTED with them in `why` ("YM2151, OKIM6295") */
 void      nsn_player_stop(void);
 bool      nsn_player_active(void);
 void nsn_player_set_rg(int mode);                 /* ReplayGain: 0 off, 1 track, 2 album (from the file's tags; untagged files are left alone) */
@@ -26,8 +27,10 @@ void nsn_player_set_volume(int pct);              /* 0..100, perceptual (cubic) 
 int  nsn_player_volume(void);                     /* that output's volume (the effective one) */
 void nsn_player_set_vollimit(int n);              /* 0..100: no volume above it is applied or shown */
 int  nsn_player_vollimit(void);
-void nsn_player_set_gapless(bool on);             /* track ends flow into the next track of the playlist when rate and output are the same */
-bool nsn_player_gapless(void);
+void nsn_player_set_gapless(bool on);
+bool nsn_player_gapless(void);                    /* track ends flow into the next track of the playlist when rate and output are the same */
+void nsn_player_set_expfmt(bool on);              /* the experimental tier of tracker / AdLib readers (a2m d00 sa2 ...): on by default, NVS "expfmt" */
+bool nsn_player_expfmt(void);
 void nsn_player_init_settings(void);              /* boot: gapless, limit, per-output volumes from NVS */
 void nsn_player_persist(void);                    /* write what changed to NVS; only from a task with an internal stack */
 void nsn_player_vol_forget(int o);                /* debug: 1 Bluetooth, 2 Auracast forget their own volume */

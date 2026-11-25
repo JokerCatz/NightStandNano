@@ -1,0 +1,2 @@
+Host tests (plain gcc/python, no ESP-IDF). `sh run.sh [OUTDIR]` builds and runs `test_pc_vgmhdr.c` (the VGM header inspector, synthetic headers, ASan + UBSan) and rebuilds the 27 synthetic VGMs of `gen_vgm_cases.py` into OUTDIR (default `/tmp/nsn_vgm_cases`).
+`test_pc_vgmhdr FILE.vgm...` prints what the inspector sees in real (un-gzipped) files; `mk_nsfe.py IN.nsf OUT.nsfe` makes a synthetic NSFE with short tune lengths.

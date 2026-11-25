@@ -93,3 +93,26 @@
 - 跨分段的記憶體：長時間（見下）沒有往下走的趨勢；`tools/stress.py leak 3`：內部 RAM 111339 → 110711（第 1 輪 −484、第 2 輪 −132、第 3 輪 −12），PSRAM 第 1 輪後固定。另一個 HLS 專用的循環（FIP、BBC、區網 VOD、加密拒絕、AC-3 拒絕、卡上檔案、ICY 電台、停止，5 輪）：內部 RAM 110423 → 110291（第 2 輪起固定）、PSRAM 每輪 ±240 位元組。
 - 20 分鐘連續播放（FIP https，`st` 每分鐘）：`pos` 每分鐘 +60.0 秒、斷音 0、內部 RAM 92331–92379 KB 固定（沒有往下走）、最大區塊 59.4 → 57.3 KB（第 15 分鐘起，BLE 沒連線，區塊位置的變動）、PSRAM 15,634,992（一次 −29 KB 後回復）、305 個分段、全程 1 條連線、最長一個分段 3.7 秒、0 個警告。
 - 另外各 3 分鐘：Radio Italia（https，TS／AAC，Akamai）、BBC 6 Music（http，TS／AAC）、區網以外的 VOD（Apple bipbop，packed AAC，3 分鐘 52 個分段）：斷音 0；Radio Italia 第 2 分鐘遇到整個區域網路 DNS 中斷約 70 秒（getaddrinfo 失敗，PC 同時也 ping 不到閘道），串流停住、狀態 `reconnecting`，網路回來後約 4 秒自動恢復。
+
+## 2026-11-25 晶片／tracker 格式的 CPU（USB 小尾巴輸出 44.1 kHz，`st` 的 `cpu`，核心 1 的 %；每個檔三次取樣）
+輸出直接 44.1 kHz、沒有重取樣、沒有音效；核心 0 在這些測試裡固定 9–12%（Wi-Fi／BLE 待機）。所有檔斷音 0，除了下表標明的。「最重」是這一族在這批檔案裡量到的最高值，不是理論上限。
+| 族 | 檔案 | 核心 1 |
+|---|---|---|
+| NSF 2A03 | lan master、Danish Mega Pony | 11–16% |
+| NSF VRC6 / MMC5 / FDS / N163 | japan / radiozonde celestial elegy / BoBombBattlefield / energy breaker、3-n163_vrc6 | 11–16%（BoBomb 起初 24%、3-n163_vrc6 起初 27%，穩定後 13–16%） |
+| **NSF VRC7（最重）** | bass samples king | **36–38%** |
+| NSF 全部擴充（VRC6+VRC7+MMC5+N163+5B） | t to s | 31–37% |
+| GBS | cpl gbc intro 6、knark、mental respirator | 10–13% |
+| HES | ropm 02 / 1941 | 27–33% / 12–14% |
+| **KSS（MSX-MUSIC 的 YM2413 開，預設）** | ind revolution、nemesis gametune、2001 | **41–48%**（2001：24–27%） |
+| SAP / AY | ABBUC JHV 2002 2、Electra / interchrome、acoustic dreams | 9–12% |
+| VGM SN76489（vgz） | 6 個 | 10–13% |
+| YM（Atari ST） | lap2、ooh yeah、decade demo | 8–13% |
+| AHX / HVL | 4 個 | 10–13% |
+| **SID（最重）** | 單 SID：15 Years Oxyron、Santas | 26–38% |
+| | 2SID：Crank Powered Async Loader | 42–53% |
+| | **3SID：Light Years** | **59–82%**（兩次量：59→79、78→82）；斷音 0，但已貼近「核心 1 連續 2 秒 90%」的音效卸載門檻 |
+| AdPlug（OPL） | rad backlash、christmas song / hsc hardc1 / amd cosmos-theme / d00 ergo、jungle / sa2 fairy tale / a2m | 20–33%（backlash 26–33%） |
+| libxmp tracker | mod giel、monday / s3m overdriv、ZAK / xm jt strng、radix / it 1 channel moog、beek | 11–25%（beek 20–22%、jt_strng 15–25%、radix 17%） |
+- Stereophonik（2SID，RSID）的核心 1 也量到 80–83%，但那首在 PC 與板子上都是靜音（見 `requirements.md`），所以不列入。
+- 檔內 `next`：每次 KSS／HES 的換曲有一瞬間（重新初始化加上 GME 往前找聲音）核心 1 較高；修正前每次都被算成斷音，現在換曲的空檔和換檔一樣不計。
