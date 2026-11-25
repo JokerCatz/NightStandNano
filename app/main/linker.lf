@@ -1,0 +1,9 @@
+# The Bluetooth controller calls these two coexistence wrappers from its ISO event interrupt. IDF v6.1 (components/bt/porting_btdm/controller/
+# btdm_common/src/btdm_coex.c) leaves them in flash; the coexistence function they call (coex_end_int_handle) is already in IRAM. While the flash
+# cache is off (an NVS write: volume, settings, the resume bookmark) an ISO end interrupt then fetches flash code -> instruction access fault ->
+# CPU lockup (docs/measurements.md I). Placing the wrappers in IRAM makes the Auracast broadcast survive flash writes (+ a few bytes of IRAM).
+[mapping:nsn_bt_coex_iso_iram]
+archive: libbt.a
+entries:
+    btdm_coex:wr_btdm_coex_iso_end_int_handle (noflash)
+    btdm_coex:wr_btdm_coex_iso_start_int_handle (noflash)

@@ -296,6 +296,11 @@ YM2151×2 dense（核心 1 約 190 %、核心 0 約 190 %）：藍牙 AAC + inli
 ### H. 其他整合檢查（USB DAC）
 GME 檔照常（vgz、nsf、gbs；SID 不受影響）；`gen_vgm_cases.py` 的 27 個檔：GME 的 psg／YM2612／YM2413 檔播放、`refuse_YM2151*`／`YM2203`／`v100_shared_clock_YM2151` 現在由 FM 後端播、`SN76489_YM2151` 以「SN76489 + YM2151 (mixed)」拒絕、`YM2151_OKIM6295` 以 OKIM6295、`YM2608_YM2610B`、`YM2612_YM2413` 以名稱拒絕、壞檔不當機；S98 的 YM2608（含 v1 預設裝置）、寫入 SN76489 的 S98 以名稱拒絕；標籤（GD3／S98 的曲名、作者、遊戲 → title／artist／album）、長度（迴圈檔 6 s + 2 × 14 s = 34 s，淡出再 8 s；`len` 顯示 34000，不含淡出）；zip 內的 vgm／s98（單檔、整包、`next`／`prev`）；順播（四個 3 s 的 OPN／OPM 交替檔：每個接點「opened in 29 ms, 482 ms of audio still queued」，輸出檢查 0 跳變、接點 ±300 影格內沒有靜音）；書籤／`resume`（從頭重播，定義如此）；`stop` 到回覆約 50 ms（核心 0 工作者、YM2151 dense）。
 
-### I. 已知問題（非 FM 後端造成）
-Auracast 開著時連續快速 `play`／`stop`（約每 2 秒一次）約 30–55 次後，核心 0 會 CPU lockup 重啟（異常 PC 在藍牙 ROM 的 `wr_btdm_coex_iso_end_int_handle`，指令存取錯誤，第二個例外在 ROM 的 panic 處理）。用 mp3／flac／ogg／m4a 交替也一樣（55 次），所以與 FM 後端無關；沒有修，記在這裡。
+### I. Auracast 開著時 `play`／`stop` 的 CPU lockup（已修，2026-11-26）
+**現象**：`out cast` 後約每 2 秒 `play`／`stop`，約 30–55 次後核心 0 CPU lockup 重啟（mp3／flac／ogg／m4a 都一樣，與 FM 後端無關）。
+**原因（已證實）**：panic 的 PC `0x400388e0` 不是 ROM，是 flash 映射的程式碼：`addr2line` 解成 `wr_btdm_coex_iso_end_int_handle`（IDF v6.1 `components/bt/porting_btdm/controller/btdm_common/src/btdm_coex.c:176`），例外原因 1（instruction access fault），第二個例外是 `panic_handler`。這個包裝函式由藍牙控制器在 ISO 事件結束的中斷裡呼叫，IDF 沒有給它 `IRAM_ATTR`（它呼叫的 `coex_end_int_handle` 在 IRAM 裡，`wr_btdm_coex_iso_protect_frame_thres_get` 也有 `IRAM_ATTR`，只有 `iso_start/end_int_handle` 漏了）。NVS 寫入（音量、設定 `g_set.last`、停止時的續播書籤）期間 flash cache 關閉；ISO 中斷剛好在這段時間進來就去取 flash 的指令 → 例外 → lockup。`play`／`stop` 每次都寫 NVS，所以才被誤認為與 play／stop 有關。
+**證據**：(1) 不播放，只在廣播中交替 `vol 30`／`vol 31`（每次一次 NVS 寫入，每秒 2 次）：61、62、62 輪（約 122 次寫入）後同一個 PC、同一個 lockup；(2) `play`／`stop` 基準線 28、46、47 輪；(3) 修正後（見下）NVS 連打 300 輪（600 次寫入）0 次，play／stop 3 × 280 輪 0 次。
+**修正**：`app/main/linker.lf` 用 linker fragment 把 `wr_btdm_coex_iso_end_int_handle`（與 start 版）放進 IRAM（`noflash`），不改 IDF 原始碼（`_start_int_handle` 目前沒被連結進來，列在 fragment 只是預防）；成本約 8 位元組 IRAM。這是真正的根因修正，不是緩解。
+**驗證**：play／stop 週期 2 秒（`t.mp3`、`t.flac`、`t.ogg`、`t.m4a` 輪流），3 次 × 280 輪（為最差基準 47 的 5.9 倍）全數存活，`underflows=0`、`send_err=0`。副作用：`cast` 的 `gap_max_us` 由 11–12 ms 變成 30–32 ms（flash 寫入期間 esp_timer 任務被延後；之前根本撐不到那一刻），`underflows` 仍 0。
+**沒查**：flash 擦寫時 10 ms 計時器延遲約 30 ms 對接收端的影響（沒有在 JukeDial 收聽下量）；控制器其他可能不在 IRAM 的回呼（這次的測試沒有再出現）。
 
