@@ -93,3 +93,9 @@ and `THIRD_PARTY_NOTICES.md` at the root, and the table above is what the kept c
 | `cast.c/.h` | `bt_svc_cast_tx.c`, `bt_svc.c` (broadcast_on / off) | ported without UI and services |
 
 The comments in those files still say "JukeDial" or "round"; they describe where the code came from.
+
+## Added after the copy: HLS (2026-11-25)
+`player_core/src/pc_hls.c`, `pc_ts.c` and their headers had been pruned (no caller, 0 bytes in the image). They were copied again from JukeDial's working tree
+(`ESP32S31_round/components/player_core`, same files as in the public JukeDial) and added to `player_core/CMakeLists.txt`. `pc_ts.*` is unchanged;
+`pc_hls.*` was extended in this repository (variant choice by CODECS / RESOLUTION / audio renditions, encryption / fMP4 flags, `#EXTINF` titles, a window that
+starts at a given sequence number, 1023-character addresses, heap work space in `pc_url_resolve`); see `docs/design.md`, "HLS radio". These two files now differ from JukeDial's.

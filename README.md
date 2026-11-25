@@ -42,7 +42,7 @@ never run on real hardware (listed under "還沒實測過" below).
 **來源**
 - TF 卡（FAT32、exFAT）：mp3 flac wav aiff m4a aac ogg opus mpc tta adx vag brstm，整個資料夾連續播放，`.zip` 當資料夾。
 - 晶片音樂：GME（nsf gbs spc vgm vgz …）、tracker、sid、opl、ym、ahx、PICO-8。
-- 網路電台：http／https，MP3／AAC／Ogg，ICY 歌名，`.pls`／`.m3u`；不支援 HLS。控制頁可以搜尋電台（radio-browser），收藏存在卡上的 `radio.txt`。
+- 網路電台：http／https，MP3／AAC／Ogg，ICY 歌名，`.pls`／`.m3u`，HLS（`.m3u8`：TS／AAC 與 packed AAC／MP3 分段，直播與已結束的清單，母清單自動選音訊版本；fMP4（CMAF）、AC-3／E-AC-3、加密（AES-128／SAMPLE-AES）的串流會被拒絕，狀態欄寫明原因）。控制頁可以搜尋電台（radio-browser），收藏存在卡上的 `radio.txt`。
 - 手機藍牙串流進來，播到小尾巴（喇叭模式，SBC／AAC）。
 - 白噪音 8 種；場景（最多 3 層環境音循環混音；場景檔要自己用 `tools/make_scenes.py` 從自己的素材庫產生，repo 不附）。
 
@@ -71,6 +71,7 @@ never run on real hardware (listed under "還沒實測過" below).
 - 當機記錄寫到卡上 `_player/logs/crash.txt`；連續 3 次開機後 60 秒內當機會進安全模式。
 - TF 卡腳位與 LED 腳位可設定（存板上 NVS，不用重編）。ESP32-S31 的 SDMMC 只能用固定腳位；自己焊的卡座請用 SPI 模式（`hw sd spi …`）。見 [`docs/porting.md`](docs/porting.md)。
 - TF 卡測速；卡片有回應但檔案系統讀不到時，可以格式化（三步、兩組確認碼；讀得到的卡任何介面都不能格式化）。
+- 電台不支援：HLS 的 fMP4／CMAF 分段、AC-3／E-AC-3、加密串流、裸 TS 串流（狀態文字 `HLS: fMP4 not supported`、`HLS: encrypted`、`HLS: unsupported audio`…）。
 - 不做的（已裁定）：鬧鐘、OTA（故障就重刷）、波形與相位視覺化、手機→盒子→耳機中繼、Auracast 收聽（只做廣播出去）、影片、樂器模式、遊戲。
 
 ## 還沒實測過（請當成未驗證）

@@ -637,6 +637,8 @@ static void h_dbg(o_t *o, char *args)
         nsn_ratetest_debug_set(r, w && !strcmp(w + 1, "ok") ? NSN_RT_OK : w && !strcmp(w + 1, "bad") ? NSN_RT_BAD : NSN_RT_UNTESTED);
         say(o, "rt %u -> %d", r, nsn_ratetest_verdict(r));
     }
+    else if (!strncmp(args, "hlsreuse ", 9)) { nsn_radio_debug_reuse(atoi(args + 9)); say(o, "hlsreuse %d (connections so far %u)", atoi(args + 9), nsn_radio_connections()); }
+    else if (!strcmp(args, "conns")) say(o, "connections %u", nsn_radio_connections());
     else if (!strncmp(args, "opendelay ", 10)) { nsn_player_debug_opendelay(atoi(args + 10)); say(o, "opendelay %d ms", atoi(args + 10)); }
     else if (!strncmp(args, "xfade ", 6)) { nsn_scene_debug_xfade(atoi(args + 6)); say(o, "scene xfade %d ms", atoi(args + 6)); }
     else if (!strcmp(args, "ramp")) { nsn_player_ramp_dump(b, sizeof b); say(o, "%s", b); }

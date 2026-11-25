@@ -379,6 +379,7 @@ static int open_track(const char *path, trk_t *t)
     const pc_backend_t *be = backend_for(path);
     s_tag_title[0] = s_tag_artist[0] = s_tag_album[0] = 0; s_rg = 1.0f; s_fmt = "";
     bool is_url = !strncmp(path, "http://", 7) || !strncmp(path, "https://", 8);
+    if (!is_url) nsn_radio_end();                           /* a refusal text of the last station (HLS: encrypted ...) does not outlive it */
     char zpath[NAME_MAX_]; const char *inner = NULL;
     bool zip = !is_url && path[0] == '/' && nsn_zip_split(path, zpath, sizeof zpath, &inner);     /* "<archive>.zip/<entry>" */
     pc_reader_t *r = &t->r;

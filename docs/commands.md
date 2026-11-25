@@ -48,7 +48,7 @@ BLE 沒有加密，範圍內的任何人都能連線與控制播放，這是設�
 
 | 指令 | 說明 |
 |---|---|
-| `radio <網址>` | 播放網路電台（http／https；MP3／AAC／Ogg；不支援 HLS） |
+| `radio <網址>` | 播放網路電台（http／https；MP3／AAC／Ogg；HLS `.m3u8` 的 TS／AAC、packed AAC／MP3 分段；fMP4、AC-3、加密會被拒絕並在 `rstate` 顯示原因） |
 | `radio` 或 `radio list` | 列出 `/sdcard/_player/config/radio.txt` 的收藏 |
 | `radio <N>` | 播放第 N 個收藏 |
 | `radio add <名稱>\|<網址>`、`radio del <N>` | 改收藏。**這是 BLE 唯一能改卡上檔案的路徑**：固定檔案 `radio.txt`、只收 http(s) 網址、長度與數量有限 |
@@ -137,7 +137,7 @@ LDAC 或 Auracast 時重型效果自動暫停；核心 1 連續過載 2 秒也�
 | `crash` | 故意當機（測試當機記錄與安全模式） |
 | `memwatch [秒]` | 記錄這段時間內可用內部記憶體的最低點（1–60 秒） |
 | `keys sim <c\|p\|m> <1\|2\|3\|h>` | 模擬線控按鍵的手勢 |
-| `dbg …` | 測試用：`dbg oc arm\|off\|show`（輸出檢查）、`dbg vol [forget bt\|cast]`、`dbg ramp`、`dbg looplen <ms>`、`dbg scene …`、`dbg trim on\|off`、`dbg rt <rate> ok\|bad\|untested`、`dbg opendelay <ms>`、`dbg xfade <ms>`、`dbg spare 0\|1` |
+| `dbg …` | 測試用：`dbg oc arm\|off\|show`（輸出檢查）、`dbg vol [forget bt\|cast]`、`dbg ramp`、`dbg looplen <ms>`、`dbg scene …`、`dbg trim on\|off`、`dbg rt <rate> ok\|bad\|untested`、`dbg opendelay <ms>`、`dbg xfade <ms>`、`dbg spare 0\|1`、`dbg hlsreuse 0\|1`（HLS 是否重用連線）、`dbg conns`（開過幾條連線） |
 | `hw sd\|led\|reset`、`sdpins` 的設定 | 見上 |
 | `cardfmt selftest`、`cardfmt sim` | 見上 |
 
