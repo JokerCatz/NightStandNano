@@ -74,6 +74,13 @@
         "rs.server_refused": { en: "The server refused the connection", "zh-TW": "\u4F3A\u670D\u5668\u62D2\u7D55\u9023\u7DDA", "zh-CN": "\u670D\u52A1\u5668\u62D2\u7EDD\u8FDE\u63A5" },
         "rs.empty_playlist": { en: "The playlist is empty", "zh-TW": "\u64AD\u653E\u6E05\u55AE\u662F\u7A7A\u7684", "zh-CN": "\u64AD\u653E\u5217\u8868\u662F\u7A7A\u7684" },
         "rs.too_many_redirects": { en: "Too many redirects", "zh-TW": "\u8F49\u5740\u6B21\u6578\u592A\u591A", "zh-CN": "\u91CD\u5B9A\u5411\u6B21\u6570\u8FC7\u591A" },
+        "rs.hls_encrypted": { en: "HLS: encrypted streams are not supported", "zh-TW": "HLS\uFF1A\u4E0D\u652F\u63F4\u52A0\u5BC6\u7684\u4E32\u6D41", "zh-CN": "HLS\uFF1A\u4E0D\u652F\u6301\u52A0\u5BC6\u7684\u6D41" },
+        "rs.hls_fmp_not_supported": { en: "HLS: fMP4 segments are not supported", "zh-TW": "HLS\uFF1A\u4E0D\u652F\u63F4 fMP4 \u5206\u6BB5", "zh-CN": "HLS\uFF1A\u4E0D\u652F\u6301 fMP4 \u5206\u6BB5" },
+        "rs.hls_ac_not_supported": { en: "HLS: AC-3 audio is not supported", "zh-TW": "HLS\uFF1A\u4E0D\u652F\u63F4 AC-3 \u97F3\u8A0A", "zh-CN": "HLS\uFF1A\u4E0D\u652F\u6301 AC-3 \u97F3\u9891" },
+        "rs.hls_unsupported_audio": { en: "HLS: unsupported audio format", "zh-TW": "HLS\uFF1A\u4E0D\u652F\u63F4\u7684\u97F3\u8A0A\u683C\u5F0F", "zh-CN": "HLS\uFF1A\u4E0D\u652F\u6301\u7684\u97F3\u9891\u683C\u5F0F" },
+        "rs.hls_format_changed": { en: "HLS: the audio format changed during playback", "zh-TW": "HLS\uFF1A\u64AD\u653E\u9014\u4E2D\u97F3\u8A0A\u683C\u5F0F\u6539\u8B8A", "zh-CN": "HLS\uFF1A\u64AD\u653E\u9014\u4E2D\u97F3\u9891\u683C\u5F0F\u6539\u53D8" },
+        "rs.hls_bare_ts_stream_not_supported": { en: "HLS: this kind of stream (bare TS) is not supported", "zh-TW": "HLS\uFF1A\u4E0D\u652F\u63F4\u9019\u7A2E\u4E32\u6D41\uFF08\u7D14 TS\uFF09", "zh-CN": "HLS\uFF1A\u4E0D\u652F\u6301\u8FD9\u79CD\u6D41\uFF08\u7EAF TS\uFF09" },
+        "rs.https_low_memory": { en: "Not enough memory for a secure (https) connection", "zh-TW": "\u8A18\u61B6\u9AD4\u4E0D\u8DB3\uFF0C\u7121\u6CD5\u5EFA\u7ACB\u52A0\u5BC6\uFF08https\uFF09\u9023\u7DDA", "zh-CN": "\u5185\u5B58\u4E0D\u8DB3\uFF0C\u65E0\u6CD5\u5EFA\u7ACB\u52A0\u5BC6\uFF08https\uFF09\u8FDE\u63A5" },
         "rs.hls_not_supported": { en: "HLS is not supported", "zh-TW": "\u4E0D\u652F\u63F4 HLS", "zh-CN": "\u4E0D\u652F\u6301 HLS" },
         "fav.title": { en: "Favourites (stored on the card)", "zh-TW": "\u6536\u85CF\uFF08\u5B58\u5728\u5361\u4E0A\uFF09", "zh-CN": "\u6536\u85CF\uFF08\u4FDD\u5B58\u5728\u5361\u4E0A\uFF09" },
         "fav.hint": { en: "The station list on the card loads after you connect.", "zh-TW": "\u9023\u7DDA\u5F8C\u81EA\u52D5\u8F09\u5165\u5361\u4E0A\u7684\u96FB\u53F0\u6E05\u55AE\u3002", "zh-CN": "\u8FDE\u63A5\u540E\u81EA\u52A8\u52A0\u8F7D\u5361\u4E0A\u7684\u7535\u53F0\u5217\u8868\u3002" },
@@ -214,10 +221,9 @@
         "rn.kbps": { en: "Minimum bitrate", "zh-TW": "\u6700\u4F4E\u4F4D\u5143\u7387", "zh-CN": "\u6700\u4F4E\u6BD4\u7279\u7387" },
         "rn.kbpsAll": { en: "Any bitrate", "zh-TW": "\u4E0D\u9650\u4F4D\u5143\u7387", "zh-CN": "\u4E0D\u9650\u6BD4\u7279\u7387" },
         "rn.search": { en: "Search", "zh-TW": "\u641C\u5C0B", "zh-CN": "\u641C\u7D22" },
-        "rn.hlsToo": { en: "Also list HLS (not supported by the device)", "zh-TW": "\u4E5F\u5217\u51FA HLS\uFF08\u88DD\u7F6E\u4E0D\u652F\u63F4\uFF09", "zh-CN": "\u4E5F\u5217\u51FA HLS\uFF08\u8BBE\u5907\u4E0D\u652F\u6301\uFF09" },
         "rn.more": { en: "Load more", "zh-TW": "\u8F09\u5165\u66F4\u591A", "zh-CN": "\u52A0\u8F7D\u66F4\u591A" },
-        "rn.hlsTitle": { en: "The device doesn't support HLS", "zh-TW": "\u88DD\u7F6E\u4E0D\u652F\u63F4 HLS", "zh-CN": "\u8BBE\u5907\u4E0D\u652F\u6301 HLS" },
-        "rn.hlsTag": { en: "Not supported (HLS)", "zh-TW": "\u4E0D\u652F\u63F4\uFF08HLS\uFF09", "zh-CN": "\u4E0D\u652F\u6301\uFF08HLS\uFF09" },
+        "rn.hlsTitle": { en: "HLS stream: takes a few seconds longer to start", "zh-TW": "HLS \u4E32\u6D41\uFF1A\u958B\u59CB\u64AD\u653E\u6703\u591A\u7B49\u5E7E\u79D2", "zh-CN": "HLS \u6D41\uFF1A\u5F00\u59CB\u64AD\u653E\u4F1A\u591A\u7B49\u51E0\u79D2" },
+        "rn.hlsTag": { en: "HLS", "zh-TW": "HLS", "zh-CN": "HLS" },
         "rn.maybeTag": { en: "May not play", "zh-TW": "\u53EF\u80FD\u4E0D\u652F\u63F4", "zh-CN": "\u53EF\u80FD\u4E0D\u652F\u6301" },
         "rn.savedTag": { en: "On the card", "zh-TW": "\u5DF2\u5B58\u5728\u5361\u4E0A", "zh-CN": "\u5DF2\u4FDD\u5B58\u5728\u5361\u4E0A" },
         "rn.saveAria": { en: "Save {name} to the card", "zh-TW": "\u5B58\u5230\u5361\u4E0A {name}", "zh-CN": "\u4FDD\u5B58\u5230\u5361\u4E0A {name}" },
@@ -227,7 +233,6 @@
         "rn.noMatch": { en: "No matching stations.", "zh-TW": "\u6C92\u6709\u7B26\u5408\u7684\u96FB\u53F0\u3002", "zh-CN": "\u6CA1\u6709\u7B26\u5408\u6761\u4EF6\u7684\u7535\u53F0\u3002" },
         "rn.noMatchHid": { en: "No matching stations ({n} hidden by the filters).", "zh-TW": "\u6C92\u6709\u7B26\u5408\u7684\u96FB\u53F0\uFF08\u6709 {n} \u7B46\u88AB\u7BE9\u9078\u96B1\u85CF\uFF09\u3002", "zh-CN": "\u6CA1\u6709\u7B26\u5408\u6761\u4EF6\u7684\u7535\u53F0\uFF08\u6709 {n} \u6761\u88AB\u7B5B\u9009\u9690\u85CF\uFF09\u3002" },
         "rn.results": { en: "{n} stations. Tap one to play it; tap \u2606 to save it to the card.", "zh-TW": "{n} \u500B\u96FB\u53F0\u3002\u9EDE\u4E00\u4E0B\u64AD\u653E\uFF1B\u2606 \u5B58\u5230\u5361\u4E0A\u3002", "zh-CN": "{n} \u4E2A\u7535\u53F0\u3002\u70B9\u4E00\u4E0B\u64AD\u653E\uFF1B\u2606 \u4FDD\u5B58\u5230\u5361\u4E0A\u3002" },
-        "rn.resultsHls": { en: "{n} stations; {h} HLS hidden (not supported by the device). Tap one to play it; tap \u2606 to save it to the card.", "zh-TW": "{n} \u500B\u96FB\u53F0\uFF0C\u5DF2\u96B1\u85CF {h} \u500B HLS\uFF08\u88DD\u7F6E\u4E0D\u652F\u63F4\uFF09\u3002\u9EDE\u4E00\u4E0B\u64AD\u653E\uFF1B\u2606 \u5B58\u5230\u5361\u4E0A\u3002", "zh-CN": "{n} \u4E2A\u7535\u53F0\uFF0C\u5DF2\u9690\u85CF {h} \u4E2A HLS\uFF08\u8BBE\u5907\u4E0D\u652F\u6301\uFF09\u3002\u70B9\u4E00\u4E0B\u64AD\u653E\uFF1B\u2606 \u4FDD\u5B58\u5230\u5361\u4E0A\u3002" },
         "rn.savedOne": { en: "\u201C{name}\u201D saved to the card.", "zh-TW": "\u300C{name}\u300D\u5DF2\u5B58\u5230\u5361\u4E0A\u3002", "zh-CN": "\u201C{name}\u201D\u5DF2\u4FDD\u5B58\u5230\u5361\u4E0A\u3002" },
         // ---- visualizer (viz-nano*.js, viz/) ----
         "viz.mode": { en: "Visual", "zh-TW": "\u8996\u89BA\u6548\u679C", "zh-CN": "\u89C6\u89C9\u6548\u679C" },
@@ -428,6 +433,7 @@
         "keys.sel": { en: "{b}, {g}", "zh-TW": "{b} {g}", "zh-CN": "{b} {g}" },
         "keys.last.some": { en: "Just detected: {b}, {g} \u2192 {a} ({s} s ago)", "zh-TW": "\u525B\u624D\u5075\u6E2C\u5230\uFF1A{b} {g} \u2192 {a}\uFF08{s} \u79D2\u524D\uFF09", "zh-CN": "\u521A\u624D\u68C0\u6D4B\u5230\uFF1A{b} {g} \u2192 {a}\uFF08{s} \u79D2\u524D\uFF09" },
         "keys.last.none": { en: "No button press detected yet. Press a button on the headset to try it.", "zh-TW": "\u9084\u6C92\u6709\u5075\u6E2C\u5230\u6309\u9375\u3002\u6309\u4E00\u4E0B\u8033\u6A5F\u4E0A\u7684\u6309\u9375\u8A66\u8A66\u3002", "zh-CN": "\u8FD8\u6CA1\u6709\u68C0\u6D4B\u5230\u6309\u952E\u3002\u6309\u4E00\u4E0B\u8033\u673A\u4E0A\u7684\u6309\u952E\u8BD5\u8BD5\u3002" },
+        "keys.seelog": { en: "See the button log in Diagnostics", "zh-TW": "\u5728\u8A3A\u65B7\u9801\u67E5\u770B\u6309\u9375\u7D00\u9304", "zh-CN": "\u5728\u8BCA\u65AD\u9875\u67E5\u770B\u6309\u952E\u8BB0\u5F55" },
         "keys.err": { en: "The box did not accept that setting.", "zh-TW": "\u8033\u6A5F\u6309\u9375\u8A2D\u5B9A\u6C92\u6709\u88AB\u63A5\u53D7\u3002", "zh-CN": "\u8033\u673A\u6309\u952E\u8BBE\u7F6E\u6CA1\u6709\u88AB\u63A5\u53D7\u3002" },
         "card.title": { en: "Memory card", "zh-TW": "\u8A18\u61B6\u5361", "zh-CN": "\u5B58\u50A8\u5361" },
         "card.wait": { en: "Loads after you connect", "zh-TW": "\u9023\u7DDA\u5F8C\u81EA\u52D5\u8F09\u5165", "zh-CN": "\u8FDE\u63A5\u540E\u81EA\u52A8\u52A0\u8F7D" },
@@ -632,6 +638,26 @@
         "night.help": { en: "Quiet-volume boost, protection against sudden loud sounds, dimmed lights.", "zh-TW": "\u5C0F\u97F3\u91CF\u88DC\u511F\u3001\u9632\u7A81\u7136\u5927\u8072\u3001\u71C8\u5149\u8ABF\u6697\u3002", "zh-CN": "\u5C0F\u97F3\u91CF\u8865\u507F\u3001\u9632\u7A81\u7136\u5927\u58F0\u3001\u706F\u5149\u8C03\u6697\u3002" },
         "radio.help": { en: "Tap a station to play it; the star saves it to the memory card. The favourites list lives on the card, not in the browser.", "zh-TW": "\u9EDE\u4E00\u4E0B\u96FB\u53F0\u5C31\u6703\u958B\u59CB\u64AD\u653E\uFF1B\u2605 \u6703\u628A\u96FB\u53F0\u5B58\u5230\u8A18\u61B6\u5361\uFF0C\u6536\u85CF\u6E05\u55AE\u653E\u5728\u5361\u4E0A\uFF0C\u4E0D\u5728\u700F\u89BD\u5668\u88E1\u3002", "zh-CN": "\u70B9\u4E00\u4E0B\u7535\u53F0\u5C31\u4F1A\u5F00\u59CB\u64AD\u653E\uFF1B\u2605 \u4F1A\u628A\u7535\u53F0\u5B58\u5230\u8BB0\u5FC6\u5361\uFF0C\u6536\u85CF\u5217\u8868\u653E\u5728\u5361\u4E0A\uFF0C\u4E0D\u5728\u6D4F\u89C8\u5668\u91CC\u3002" },
         "output.perOut": { en: "Each output (DAC, Bluetooth headphones, broadcast) remembers its own volume; the volume bar shows which one you are adjusting.", "zh-TW": "\u6BCF\u500B\u8F38\u51FA\uFF08\u5C0F\u5C3E\u5DF4\u3001\u85CD\u7259\u8033\u6A5F\u3001\u5EE3\u64AD\uFF09\u5404\u81EA\u8A18\u4F4F\u81EA\u5DF1\u7684\u97F3\u91CF\uFF1B\u97F3\u91CF\u5217\u6703\u6A19\u793A\u73FE\u5728\u8ABF\u7684\u662F\u54EA\u4E00\u500B\u3002", "zh-CN": "\u6BCF\u4E2A\u8F93\u51FA\uFF08\u5C0F\u5C3E\u5DF4\u3001\u84DD\u7259\u8033\u673A\u3001\u5E7F\u64AD\uFF09\u5404\u81EA\u8BB0\u4F4F\u81EA\u5DF1\u7684\u97F3\u91CF\uFF1B\u97F3\u91CF\u680F\u4F1A\u6807\u793A\u73B0\u5728\u8C03\u7684\u662F\u54EA\u4E00\u4E2A\u3002" },
+        "ev.title": { en: "Recent events", "zh-TW": "\u6700\u8FD1\u7684\u4E8B\u4EF6", "zh-CN": "\u6700\u8FD1\u7684\u4E8B\u4EF6" },
+        "ev.help": { en: "Press a button on the headset to see what arrives here.", "zh-TW": "\u6309\u4E00\u4E0B\u8033\u6A5F\u4E0A\u7684\u6309\u9375\uFF0C\u9019\u88E1\u5C31\u6703\u986F\u793A\u6536\u5230\u4E86\u4EC0\u9EBC\u3002", "zh-CN": "\u6309\u4E00\u4E0B\u8033\u673A\u4E0A\u7684\u6309\u952E\uFF0C\u8FD9\u91CC\u5C31\u4F1A\u663E\u793A\u6536\u5230\u4E86\u4EC0\u4E48\u3002" },
+        "ev.refresh": { en: "Refresh", "zh-TW": "\u91CD\u65B0\u6574\u7406", "zh-CN": "\u5237\u65B0" },
+        "ev.clear": { en: "Clear", "zh-TW": "\u6E05\u9664", "zh-CN": "\u6E05\u9664" },
+        "ev.empty": { en: "No events yet.", "zh-TW": "\u9084\u6C92\u6709\u4E8B\u4EF6\u3002", "zh-CN": "\u8FD8\u6CA1\u6709\u4E8B\u4EF6\u3002" },
+        "ev.wired": { en: "Wired headset \xB7 {b} {g} \u2192 {a}", "zh-TW": "\u7DDA\u63A7\u3000{b} {g} \u2192 {a}", "zh-CN": "\u7EBF\u63A7\u3000{b} {g} \u2192 {a}" },
+        "ev.bt": { en: "Bluetooth headphones \xB7 {k} \u2192 {a}", "zh-TW": "\u85CD\u7259\u8033\u6A5F\u3000{k} \u2192 {a}", "zh-CN": "\u84DD\u7259\u8033\u673A\u3000{k} \u2192 {a}" },
+        "ev.k.volup": { en: "Volume up key", "zh-TW": "\u97F3\u91CF\u52A0\u9375", "zh-CN": "\u97F3\u91CF\u52A0\u952E" },
+        "ev.k.voldn": { en: "Volume down key", "zh-TW": "\u97F3\u91CF\u6E1B\u9375", "zh-CN": "\u97F3\u91CF\u51CF\u952E" },
+        "ev.k.mute": { en: "Mute key", "zh-TW": "\u975C\u97F3\u9375", "zh-CN": "\u9759\u97F3\u952E" },
+        "ev.k.play": { en: "Play key", "zh-TW": "\u64AD\u653E\u9375", "zh-CN": "\u64AD\u653E\u952E" },
+        "ev.k.stop": { en: "Stop key", "zh-TW": "\u505C\u6B62\u9375", "zh-CN": "\u505C\u6B62\u952E" },
+        "ev.k.pause": { en: "Pause key", "zh-TW": "\u66AB\u505C\u9375", "zh-CN": "\u6682\u505C\u952E" },
+        "ev.k.rew": { en: "Rewind key", "zh-TW": "\u5012\u8F49\u9375", "zh-CN": "\u5012\u8F6C\u952E" },
+        "ev.k.ff": { en: "Fast forward key", "zh-TW": "\u5FEB\u8F49\u9375", "zh-CN": "\u5FEB\u8FDB\u952E" },
+        "ev.k.fwd": { en: "Forward key (next)", "zh-TW": "\u4E0B\u4E00\u9996\u9375", "zh-CN": "\u4E0B\u4E00\u9996\u952E" },
+        "ev.k.bwd": { en: "Backward key (previous)", "zh-TW": "\u4E0A\u4E00\u9996\u9375", "zh-CN": "\u4E0A\u4E00\u9996\u952E" },
+        "ev.k.code": { en: "Key {code}", "zh-TW": "\u6309\u9375 {code}", "zh-CN": "\u6309\u952E {code}" },
+        "ev.a.pause": { en: "Pause", "zh-TW": "\u66AB\u505C", "zh-CN": "\u6682\u505C" },
+        "ev.a.ignored": { en: "ignored (not used by the box)", "zh-TW": "\u5FFD\u7565\uFF08\u76D2\u5B50\u4E0D\u8655\u7406\uFF09", "zh-CN": "\u5FFD\u7565\uFF08\u76D2\u5B50\u4E0D\u5904\u7406\uFF09" },
         "diag.build": { en: "Build", "zh-TW": "\u7248\u672C", "zh-CN": "\u7248\u672C" },
         "diag.web": { en: "Page version", "zh-TW": "\u7DB2\u9801\u7248\u672C", "zh-CN": "\u7F51\u9875\u7248\u672C" },
         "diag.fw": { en: "Firmware version", "zh-TW": "\u97CC\u9AD4\u7248\u672C", "zh-CN": "\u56FA\u4EF6\u7248\u672C" },
@@ -2792,9 +2818,9 @@
         let ty = l.y;
         if (l.chip !== null && l.chip !== void 0) {
           ctx.fillStyle = css(l.chip);
-          const pad = 2;
+          const pad2 = 2;
           ctx.beginPath();
-          if (typeof ctx.roundRect === "function") ctx.roundRect(bx, by, bw, bh, pad);
+          if (typeof ctx.roundRect === "function") ctx.roundRect(bx, by, bw, bh, pad2);
           else ctx.rect(bx, by, bw, bh);
           ctx.fill();
           tx = l.x + (l.font === "wide" ? 4 : 3);
@@ -4021,7 +4047,7 @@
     return w === WEATHER.RAIN || w === WEATHER.SNOW || w === WEATHER.FOG ? w : WEATHER.CLEAR;
   }
   function create2(args = {}) {
-    const clock = typeof args.clock === "function" ? args.clock : () => /* @__PURE__ */ new Date();
+    const clock2 = typeof args.clock === "function" ? args.clock : () => /* @__PURE__ */ new Date();
     const painter = new DrivePainter();
     const analyser = new BandAnalyser();
     const bands = createBands();
@@ -4064,7 +4090,7 @@
         const shown = live ? cfg : { ...cfg, ...CALM };
         const minute = shown.hour === HOUR.AUTO ? minuteOfDay((() => {
           try {
-            return clock();
+            return clock2();
           } catch {
             return null;
           }
@@ -5681,9 +5707,9 @@
         lo = c - 0.5;
         hi = c + 0.5;
       }
-      const pad = (hi - lo) * 0.1;
-      lo -= pad;
-      hi += pad;
+      const pad2 = (hi - lo) * 0.1;
+      lo -= pad2;
+      hi += pad2;
     }
     const X = (i) => arr.length < 2 ? w : P + (w - 2 * P) * i / (arr.length - 1), Y = (v) => h - P - (h - 2 * P) * clamp((v - lo) / (hi - lo), 0, 1);
     x.strokeStyle = s.line;
@@ -6545,8 +6571,9 @@
 
   // src/js/lib/radio.js
   function boxUrl(urls) {
-    const ok = (urls || []).filter((u) => typeof u === "string" && /^https?:\/\/[^\s|]+$/i.test(u) && !isM3u8(u));
-    return ok.find((u) => u.startsWith("http:")) || ok[0] || null;
+    const ok = (urls || []).filter((u) => typeof u === "string" && /^https?:\/\/[^\s|]+$/i.test(u));
+    const pick2 = (l) => l.find((u) => u.startsWith("http:")) || l[0];
+    return pick2(ok.filter((u) => !isM3u8(u))) || pick2(ok) || null;
   }
   function toRow(station) {
     const item = toItem(station);
@@ -6554,9 +6581,10 @@
     const url = boxUrl(item.urls);
     const codec = typeof station.codec === "string" ? station.codec.replace(/[^A-Za-z0-9.+ -]/g, "").slice(0, 12) : "";
     const bitrate = Number.isInteger(station.bitrate) && station.bitrate > 0 && station.bitrate < 1e5 ? station.bitrate : 0;
-    const hls = station.hls === 1 || station.hls === true || !url;
-    const pl = url && /\.(pls|m3u)$/i.test(new URL(url).pathname);
-    return { item, url, codec, bitrate, hls, maybe: !hls && (!CODEC_OK.test(codec) || pl), scheme: url ? url.split(":")[0] : "" };
+    if (!url) return null;
+    const hls = isM3u8(url);
+    const pl = /\.(pls|m3u)$/i.test(new URL(url).pathname);
+    return { item, url, codec, bitrate, hls, maybe: !CODEC_OK.test(codec) || pl, scheme: url.split(":")[0] };
   }
   function cleanName(name, fallback) {
     let s = String(name || "").replace(/[|\u0000-\u001f\u007f-\u009f]/g, " ").trim();
@@ -6571,7 +6599,7 @@
     return out || (fallback ? cleanName(fallback) : "");
   }
   function mountRadio({ favBox, findBox, send: send2, refresh, connected }) {
-    const rb = createRb({ fetch: window.fetch.bind(window), storage: memStorage });
+    const rb = createRb({ fetch: (...a) => window.fetch(...a), storage: memStorage });
     let saved2 = [];
     const savedByKey = () => new Map(saved2.map((s) => [streamKey(s.url), s]));
     async function play2(url, note) {
@@ -6711,7 +6739,6 @@
     const kbps = ka(el2("select"), "aria", "rn.kbps");
     kbps.append(k(el2("option", { value: "0" }), "rn.kbpsAll"), el2("option", { value: "64" }, "\u2265 64 kbps"), el2("option", { value: "128" }, "\u2265 128 kbps"), el2("option", { value: "192" }, "\u2265 192 kbps"));
     const go = k(el2("button", { type: "button", class: "primary" }), "rn.search");
-    const showHls = el2("input", { type: "checkbox", id: "showHls" });
     const status = el2("div", { class: "mut rnote", role: "status" });
     const ul = el2("ul", { class: "rlist" });
     const more = k(el2("button", { type: "button", hidden: true }), "rn.more");
@@ -6719,7 +6746,6 @@
     findBox.append(
       el2("div", { class: "row" }, el2("div", { class: "grow", style: "display:flex" }, q), go),
       el2("div", { class: "rfilters" }, country, tag, codec, kbps),
-      el2("label", { class: "rchk", for: "showHls" }, showHls, k(el2("span"), "rn.hlsToo")),
       status,
       ul,
       more
@@ -6733,19 +6759,18 @@
       const meta = [item.country, r.codec, r.bitrate ? r.bitrate + " kbps" : "", r.scheme].filter(Boolean).join(" \xB7 ");
       const main = el2(
         "button",
-        { type: "button", class: "rmain", disabled: r.hls },
+        { type: "button", class: "rmain" },
         el2("span", { class: "rname" }, item.name),
         meta ? el2("span", { class: "rmeta" }, meta) : null
       );
       if (r.hls) {
         ka(main, "title", "rn.hlsTitle");
-        main.append(k(el2("span", { class: "rtag bad" }), "rn.hlsTag"));
-      } else {
-        if (r.maybe) main.append(k(el2("span", { class: "rtag" }), "rn.maybeTag"));
-        if (sv) main.append(k(el2("span", { class: "rtag ok" }), "rn.savedTag"));
+        main.append(k(el2("span", { class: "rtag" }), "rn.hlsTag"));
       }
+      if (r.maybe) main.append(k(el2("span", { class: "rtag" }), "rn.maybeTag"));
+      if (sv) main.append(k(el2("span", { class: "rtag ok" }), "rn.savedTag"));
       main.onclick = () => play2(r.url, status);
-      const star = el2("button", { type: "button", class: "star", disabled: r.hls, "aria-pressed": String(!!sv) }, sv ? "\u2605" : "\u2606");
+      const star = el2("button", { type: "button", class: "star", "aria-pressed": String(!!sv) }, sv ? "\u2605" : "\u2606");
       ka(star, "aria", sv ? "rn.unsaveAria" : "rn.saveAria", { name: item.name });
       star.onclick = async () => {
         star.disabled = true;
@@ -6760,24 +6785,23 @@
       };
       return el2("li", { class: "rrow" }, main, star);
     }
-    let rows = [], rawCount = 0, lastCount = 0, loading = false, failed = false, token = 0, searched = false, hiddenHls = 0;
+    let rows = [], rawCount = 0, lastCount = 0, loading = false, failed = false, token = 0, searched = false;
     const seen = /* @__PURE__ */ new Set();
     const codecOf = (r) => {
       const c = r.codec.toLowerCase();
       return c.startsWith("aac") ? "aac" : c === "mp3" ? "mp3" : c === "ogg" || c === "vorbis" || c === "opus" ? "ogg" : c;
     };
-    const passes = (r) => (showHls.checked || !r.hls) && (!codec.value || codecOf(r) === codec.value) && (!r.bitrate ? +kbps.value === 0 : r.bitrate >= +kbps.value);
+    const passes = (r) => (!codec.value || codecOf(r) === codec.value) && (!r.bitrate ? +kbps.value === 0 : r.bitrate >= +kbps.value);
     function renderResults() {
       const vis = rows.filter(passes);
       ul.textContent = "";
       for (const r of vis) ul.append(rowEl(r));
-      hiddenHls = rows.filter((r) => r.hls && !showHls.checked).length;
       more.hidden = !hasMore(lastCount) || failed || !rows.length;
       more.disabled = loading;
       if (loading && !rows.length) say(status, "rn.searching");
       else if (failed) say(status, "rn.rbFail", null, true);
       else if (searched && !vis.length) say(status, rows.length ? "rn.noMatchHid" : "rn.noMatch", { n: rows.length });
-      else if (searched) say(status, hiddenHls ? "rn.resultsHls" : "rn.results", { n: vis.length, h: hiddenHls });
+      else if (searched) say(status, "rn.results", { n: vis.length });
       else say(status, null);
     }
     async function load(append) {
@@ -6827,7 +6851,7 @@
       if (!loading) load(true);
     };
     for (const s of [country, tag]) s.onchange = () => load(false);
-    for (const s of [codec, kbps, showHls]) s.onchange = renderResults;
+    for (const s of [codec, kbps]) s.onchange = renderResults;
     renderSaved("fav.hint");
     if (connected()) reload();
     return {
@@ -7319,6 +7343,48 @@
     }
   });
 
+  // src/js/lib/events.js
+  function parseEvents(lines) {
+    const entries = [];
+    let next = null;
+    for (const l of lines || []) {
+      let m;
+      if (m = /^ev end (\d+)\s*$/.exec(l)) next = +m[1];
+      else if (m = /^ev (\d+) (\d+) (.*\S)\s*$/.exec(l)) entries.push({ seq: +m[1], age: +m[2], text: m[3] });
+    }
+    return { entries, next };
+  }
+  function describeEvent(text) {
+    let m;
+    if (m = /^wired ([cpm])([123h]) (\S+)$/.exec(text)) return { kind: "wired", b: m[1], g: m[2], a: m[3] };
+    if (m = /^bt 0x([0-9a-fA-F]{1,4}) (\S+)$/.exec(text)) {
+      const n = parseInt(m[1], 16);
+      return { kind: "bt", code: "0x" + n.toString(16).toUpperCase().padStart(2, "0"), name: AVRCP_NAMES[n] || null, a: m[2] };
+    }
+    return { kind: "raw", text };
+  }
+  function applyEvents(st2, lines, now) {
+    const { entries, next } = parseEvents(lines);
+    if (next == null) return { added: 0, restart: false };
+    if (st2.next != null && next < st2.next) {
+      st2.next = null;
+      return { added: 0, restart: true };
+    }
+    for (const e of entries) st2.list.unshift({ id: ++st2.id, at: now - e.age * 1e3, text: e.text });
+    if (st2.list.length > MAX_EVENTS) st2.list.length = MAX_EVENTS;
+    st2.next = next;
+    return { added: entries.length, restart: false };
+  }
+  var MAX_EVENTS, AVRCP_NAMES, newEventState, eventsCmd;
+  var init_events = __esm({
+    "src/js/lib/events.js"() {
+      MAX_EVENTS = 100;
+      AVRCP_NAMES = { 65: "volup", 66: "voldn", 67: "mute", 68: "play", 69: "stop", 70: "pause", 72: "rew", 73: "ff", 75: "fwd", 76: "bwd" };
+      newEventState = () => ({ next: null, list: [], id: 0 });
+      eventsCmd = (st2) => st2.next == null ? "events" : "events " + st2.next;
+    }
+  });
+
   // src/js/pages/diag.js
   function pushHist(st2) {
     const add = (a, v) => {
@@ -7352,7 +7418,68 @@
     const cpu = Array.isArray(state.cpu) && state.cpu[0] >= 0 && state.cpu[1] >= 0 ? " \xB7 " + t2("sys.cpu", { a: Math.round(state.cpu[0]), b: Math.round(state.cpu[1]) }) : "";
     setRaw2($("sysv"), t2("sys.line", { wifi: t2(state.wifi ? "sys.wifiOn" : "sys.wifiOff"), kb: Math.round(state.mem / 1024), n: state.und }) + cpu);
   }
+  function evAction(a) {
+    return a in KEY_ACTS ? { t: KEY_ACTS[a] } : a === "pause" || a === "ignored" ? { t: "ev.a." + a } : a;
+  }
+  function evText(text) {
+    const d4 = describeEvent(text);
+    if (d4.kind === "wired") return t2("ev.wired", { b: { t: "keys.btn." + d4.b }, g: { t: "keys.g." + d4.g }, a: evAction(d4.a) });
+    if (d4.kind === "bt") {
+      const k2 = d4.name ? t2("ev.k." + d4.name) : t2("ev.k.code", { code: d4.code });
+      return t2("ev.bt", { k: d4.name && d4.a === "ignored" ? k2 + " (" + d4.code + ")" : k2, a: evAction(d4.a) });
+    }
+    return d4.text;
+  }
+  function renderEvents() {
+    const ul = $("evList");
+    ul.textContent = "";
+    for (const e of EV.list) {
+      const li = document.createElement("li"), tm = document.createElement("time");
+      tm.textContent = clock(e.at);
+      tm.dateTime = new Date(e.at).toISOString();
+      li.append(tm, evText(e.text));
+      ul.appendChild(li);
+    }
+    $("evEmpty").hidden = EV.list.length > 0;
+  }
+  async function pollEvents(force) {
+    if (app.scanBusy || app.link !== "on" || document.hidden || app.route !== "settings/diag") return;
+    if (evBusy) {
+      if (force === true) evAgain = true;
+      return;
+    }
+    evBusy = true;
+    try {
+      for (let i = 0; i < 2; i++) {
+        const r = await sendQuiet(eventsCmd(EV)), now = Date.now();
+        if (!r.length) break;
+        const res = applyEvents(EV, r, now);
+        if (res.added || res.restart || force) renderEvents();
+        if (!res.restart) break;
+      }
+    } finally {
+      evBusy = false;
+      if (evAgain) {
+        evAgain = false;
+        pollEvents(true);
+      }
+    }
+  }
   function initDiag() {
+    $("evRefresh").onclick = () => pollEvents(true);
+    $("evClear").onclick = () => {
+      EV.list.length = 0;
+      renderEvents();
+    };
+    setInterval(pollEvents, 3e3);
+    on("route", (key) => {
+      if (key === "settings/diag") pollEvents(true);
+    });
+    on("lang", renderEvents);
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) pollEvents(true);
+    });
+    renderEvents();
     $("buildStamp").textContent = BUILD;
     on("status", (state) => {
       pushHist(state);
@@ -7363,14 +7490,25 @@
     window.addEventListener("resize", drawSparks);
     if (window.matchMedia) window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", drawSparks);
   }
-  var BUILD, HIST, HIST_N;
+  var BUILD, HIST, HIST_N, EV, evBusy, evAgain, pad, clock;
   var init_diag = __esm({
     "src/js/pages/diag.js"() {
       init_app();
       init_eq();
-      BUILD = true ? "be9d5d02" : "dev";
+      init_link();
+      init_keys();
+      init_events();
+      BUILD = true ? "ec28034a" : "dev";
       HIST = { c0: [], c1: [], mem: [] };
       HIST_N = 120;
+      EV = newEventState();
+      evBusy = false;
+      evAgain = false;
+      pad = (n) => String(n).padStart(2, "0");
+      clock = (ms) => {
+        const d4 = new Date(ms);
+        return pad(d4.getHours()) + ":" + pad(d4.getMinutes()) + ":" + pad(d4.getSeconds());
+      };
     }
   });
 
@@ -7727,7 +7865,7 @@
     while ((i = evtBuf.indexOf("\n")) >= 0) {
       const line2 = evtBuf.slice(0, i);
       evtBuf = evtBuf.slice(i + 1);
-      log("< " + line2);
+      if (!(pending && pending.quiet)) log("< " + line2);
       if (pending) {
         pending.lines.push(line2);
         if (pending.until) {
@@ -7756,7 +7894,7 @@
     if (pending || !queue.length || !app.chCmd) return;
     const p = pending = queue.shift();
     p.lines = [];
-    log("> " + logCmd(p.cmd));
+    if (!p.quiet) log("> " + logCmd(p.cmd));
     app.chCmd.writeValueWithResponse(enc.encode(p.cmd)).then(() => {
       if (pending !== p) return;
       if (p.fast) finish();
@@ -7766,13 +7904,13 @@
       if (pending === p) finish();
     });
   }
-  function enqueue(cmd, fast, until, ms) {
+  function enqueue(cmd, fast, until, ms, quiet) {
     return new Promise((resolve) => {
       if (app.link === "off" && !app.chCmd) {
         resolve([]);
         return;
       }
-      queue.push({ cmd, resolve, fast, until, ms });
+      queue.push({ cmd, resolve, fast, until, ms, quiet });
       pump();
     });
   }
@@ -7926,7 +8064,7 @@
       } else connect();
     };
   }
-  var UUID, SVC, CMD, EVT, SPEC, dec, enc, pollTimer, rcTok, RC_DELAYS, RC_EVERY, RC_MAX, linkWaiters, waitLink, pending, queue, evtBuf, send, sendFast, sendUntil, LOG_REDACT, logCmd, gattSetup, setGattSetup;
+  var UUID, SVC, CMD, EVT, SPEC, dec, enc, pollTimer, rcTok, RC_DELAYS, RC_EVERY, RC_MAX, linkWaiters, waitLink, pending, queue, evtBuf, send, sendQuiet, sendFast, sendUntil, LOG_REDACT, logCmd, gattSetup, setGattSetup;
   var init_link = __esm({
     "src/js/core/link.js"() {
       init_app();
@@ -7951,6 +8089,7 @@
       queue = [];
       evtBuf = "";
       send = (cmd) => enqueue(cmd, false);
+      sendQuiet = (cmd) => enqueue(cmd, false, void 0, void 0, true);
       sendFast = (cmd) => enqueue(cmd, true);
       sendUntil = (cmd, re, ms) => enqueue(cmd, false, re, ms || 1e4);
       LOG_REDACT = [redact];
@@ -8008,6 +8147,56 @@
       fake.album = "Complete_Works_Volume_07_1999-2024_Anniversary_Collection";
     }
     let tick = 0;
+    const RB = [
+      ["8a1f0001-0000-4000-8000-000000000001", "Demo FM (MP3)", "https://stream.example.com/demo.mp3", "MP3", 128, "Taiwan", "pop"],
+      ["8a1f0001-0000-4000-8000-000000000002", "Harbour Jazz (HLS)", "https://hls.example.com/jazz/master.m3u8", "AAC", 96, "Taiwan", "jazz"],
+      ["8a1f0001-0000-4000-8000-000000000003", "News Network (HLS + direct)", "https://hls.example.com/news/index.m3u8?token=x", "AAC+", 64, "Japan", "news", "http://stream.example.com/news.aac"],
+      ["8a1f0001-0000-4000-8000-000000000004", "Classical Lossless", "https://stream.example.com/classic.flac", "FLAC", 900, "Germany", "classical"],
+      ["8a1f0001-0000-4000-8000-000000000005", "Night Owl Radio (HLS, AC-3)", "https://hls.example.com/owl/playlist.m3u8", "AC-3", 192, "United States", "ambient"],
+      ["8a1f0001-0000-4000-8000-000000000006", "Lofi Corner", "http://stream.example.com/lofi.ogg", "OGG", 112, "Taiwan", "lofi"]
+    ];
+    const realFetch = window.fetch.bind(window);
+    window.fetch = (u, o) => {
+      const url = String(u && u.url || u);
+      if (!/^https:\/\/[\w.-]+\.radio-browser\.info\/json\//.test(url)) return realFetch(u, o);
+      const sp = new URL(url).searchParams, nm = (sp.get("name") || "").toLowerCase();
+      const body = url.includes("/stations/search") ? +sp.get("offset") > 0 ? [] : RB.filter((r) => r[1].toLowerCase().includes(nm)).map((r) => ({
+        stationuuid: r[0],
+        name: r[1],
+        url: r[2],
+        url_resolved: r[7] ? r[7] : r[2],
+        codec: r[3],
+        bitrate: r[4],
+        country: r[5],
+        tags: r[6],
+        hls: /m3u8/.test(r[2]) ? 1 : 0,
+        favicon: ""
+      })) : [];
+      return Promise.resolve(new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } }));
+    };
+    const evs = [];
+    let evNext = 1;
+    const EV_TEXTS = ["wired c2 next", "bt 0x44 play", "wired p1 vol+", "bt 0x4B next", "wired c1 play", "bt 0x43 ignored", "bt 0x5A ignored", "wired m3 prev", "bt 0x46 pause", "bt 0x42 vol-", "wired c3 none", "wired p1 vol+"];
+    let evI = 0;
+    const evAdd = (text) => {
+      evs.push({ seq: evNext++, t: Date.now(), text });
+      if (evs.length > 32) evs.shift();
+    };
+    evAdd("wired c2 next");
+    evAdd("bt 0x44 play");
+    evAdd("bt 0x5A ignored");
+    setInterval(() => evAdd(EV_TEXTS[evI++ % EV_TEXTS.length]), 4e3);
+    if (new URLSearchParams(location.search).get("evreset") === "1") setTimeout(() => {
+      evs.length = 0;
+      evNext = 1;
+      evAdd("wired c1 play");
+    }, 1e4);
+    const eventsReply = (cmd) => {
+      const m = /^events(?: (\d+))?$/.exec(cmd);
+      if (!m) return ["events: usage: events [seq]"];
+      const from = m[1] ? +m[1] : 0, now = Date.now();
+      return [...evs.filter((e) => e.seq >= from).map((e) => `ev ${e.seq} ${Math.floor((now - e.t) / 1e3)} ${e.text}`), `ev end ${evNext}`];
+    };
     const q = new URLSearchParams(location.search);
     let fakeOutSel = "auto", castOn = false, castLoaded = false, castFirst = true, castFrames = 0, castTry = q.get("cast") === "fail" ? 1 : 0;
     const castBad = q.get("cast") === "bad" ? 1 : q.get("cast") === "half" ? 2 : 0;
@@ -8474,6 +8663,7 @@
       }
       if (cmd === "cast") return [castOn ? `cast: on "NightStand Nano" frames=${castFrames += 100} underflows=${castBad ? 4 : 0} lc3_us_per_ch=2310 send_err=${castBad ? 2 : 0} gap_max_us=1840 streams=${castBad === 2 ? "10" : "11"}` : "cast: off" + (castLoaded ? " (LE Audio stays loaded until reboot)" : "")];
       if (cmd === "keys" || cmd.startsWith("keys ")) return keysReply(cmd);
+      if (cmd === "events" || cmd.startsWith("events ")) return eventsReply(cmd);
       if (cmd === "night") return ["night: off, schedule 22:30-06:30"];
       if (cmd === "radio list") return stations.length ? stations.map((x, i) => `${i + 1} ${x.name} ${x.url}`) : ["radio: no stations"];
       if (cmd.startsWith("radio add ")) {
@@ -8501,7 +8691,7 @@
         return out.concat("lrc end");
       }
       if (/^radio \d+$/.test(cmd) || /^radio https?:/.test(cmd)) {
-        fake.rstate = "buffering";
+        fake.rstate = /owl/.test(cmd) ? "HLS: AC-3 not supported" : /master\.m3u8/.test(cmd) ? "https: low memory" : "buffering";
         return ["ok"];
       }
       if (cmd === "scene") return ["1 Cooling Summer Nap", "2 Soothing Colored Noise", "3 Campfire Rain"];
@@ -9416,11 +9606,11 @@
       const k2 = "wifi.state." + w.state.toLowerCase().replace(/[^a-z]+/g, "_").replace(/^_|_$/g, "");
       ent("wifi", I18N.has(k2) ? [k2] : w.state, /wrong|not found|no credentials/i.test(w.state) ? /no credentials/i.test(w.state) ? "warn" : "bad" : "");
     }
-    const T = app.ui.time && app.ui.time.info(), clock = app.ui.time && app.ui.time.clock();
+    const T = app.ui.time && app.ui.time.info(), clock2 = app.ui.time && app.ui.time.clock();
     if (!on_) ent("time", off);
     else if (!T) ent("time", null);
     else if (T.src === "none") ent("time", ["time.src.none"], "warn");
-    else ent("time", ["ent.time", { t: clock ? clock.slice(11, 16) : "\u2014", src: { t: "time.src." + T.src } }]);
+    else ent("time", ["ent.time", { t: clock2 ? clock2.slice(11, 16) : "\u2014", src: { t: "time.src." + T.src } }]);
     const ck = st2 && st2.card, c = app.ui.card && app.ui.card.info();
     if (!on_) ent("card", off);
     else if (ck === "none") ent("card", ["ent.card.none"], "warn");

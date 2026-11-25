@@ -15,6 +15,37 @@ export function startDemo() {
     fake.artist = "The Extraordinarily Long-Named Philharmonic Orchestra & Chamber Choir featuring Supercalifragilisticexpialidocious_Soloist";
     fake.album = "Complete_Works_Volume_07_1999-2024_Anniversary_Collection"; }
   let tick = 0;
+  // radio-browser.info is faked too (no network in the demo): a few stations, among them HLS ones (one with a direct stream as well, one with a bad codec)
+  const RB = [
+    ["8a1f0001-0000-4000-8000-000000000001", "Demo FM (MP3)", "https://stream.example.com/demo.mp3", "MP3", 128, "Taiwan", "pop"],
+    ["8a1f0001-0000-4000-8000-000000000002", "Harbour Jazz (HLS)", "https://hls.example.com/jazz/master.m3u8", "AAC", 96, "Taiwan", "jazz"],
+    ["8a1f0001-0000-4000-8000-000000000003", "News Network (HLS + direct)", "https://hls.example.com/news/index.m3u8?token=x", "AAC+", 64, "Japan", "news", "http://stream.example.com/news.aac"],
+    ["8a1f0001-0000-4000-8000-000000000004", "Classical Lossless", "https://stream.example.com/classic.flac", "FLAC", 900, "Germany", "classical"],
+    ["8a1f0001-0000-4000-8000-000000000005", "Night Owl Radio (HLS, AC-3)", "https://hls.example.com/owl/playlist.m3u8", "AC-3", 192, "United States", "ambient"],
+    ["8a1f0001-0000-4000-8000-000000000006", "Lofi Corner", "http://stream.example.com/lofi.ogg", "OGG", 112, "Taiwan", "lofi"]];
+  const realFetch = window.fetch.bind(window);
+  window.fetch = (u, o) => {
+    const url = String(u && u.url || u);
+    if (!/^https:\/\/[\w.-]+\.radio-browser\.info\/json\//.test(url)) return realFetch(u, o);
+    const sp = new URL(url).searchParams, nm = (sp.get("name") || "").toLowerCase();
+    const body = url.includes("/stations/search") ? (+sp.get("offset") > 0 ? [] : RB.filter(r => r[1].toLowerCase().includes(nm)).map(r => ({
+      stationuuid: r[0], name: r[1], url: r[2], url_resolved: r[7] ? r[7] : r[2], codec: r[3], bitrate: r[4], country: r[5], tags: r[6], hls: /m3u8/.test(r[2]) ? 1 : 0, favicon: "" }))) : [];
+    return Promise.resolve(new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } }));
+  };
+  // recent events (`events` / `events <seq>`): a wired or Bluetooth button "arrives" every ~4 s; ?demo&evreset=1 restarts the sequence ~10 s after load
+  const evs = [];   // { seq, t, text }
+  let evNext = 1;
+  const EV_TEXTS = ["wired c2 next", "bt 0x44 play", "wired p1 vol+", "bt 0x4B next", "wired c1 play", "bt 0x43 ignored", "bt 0x5A ignored", "wired m3 prev", "bt 0x46 pause", "bt 0x42 vol-", "wired c3 none", "wired p1 vol+"];
+  let evI = 0;
+  const evAdd = text => { evs.push({ seq: evNext++, t: Date.now(), text }); if (evs.length > 32) evs.shift(); };
+  evAdd("wired c2 next"); evAdd("bt 0x44 play"); evAdd("bt 0x5A ignored");
+  setInterval(() => evAdd(EV_TEXTS[evI++ % EV_TEXTS.length]), 4000);
+  if (new URLSearchParams(location.search).get("evreset") === "1") setTimeout(() => { evs.length = 0; evNext = 1; evAdd("wired c1 play"); }, 10000);
+  const eventsReply = cmd => {
+    const m = /^events(?: (\d+))?$/.exec(cmd); if (!m) return ["events: usage: events [seq]"];
+    const from = m[1] ? +m[1] : 0, now = Date.now();
+    return [...evs.filter(e => e.seq >= from).map(e => `ev ${e.seq} ${Math.floor((now - e.t) / 1000)} ${e.text}`), `ev end ${evNext}`];
+  };
   // the box's output: selected (out) vs playing (st.out); Auracast first start drops the BLE link, like the real one
   const q = new URLSearchParams(location.search);
   let fakeOutSel = "auto", castOn = false, castLoaded = false, castFirst = true, castFrames = 0, castTry = q.get("cast") === "fail" ? 1 : 0;
@@ -290,6 +321,7 @@ export function startDemo() {
     }
     if (cmd === "cast") return [castOn ? `cast: on "NightStand Nano" frames=${castFrames += 100} underflows=${castBad ? 4 : 0} lc3_us_per_ch=2310 send_err=${castBad ? 2 : 0} gap_max_us=1840 streams=${castBad === 2 ? "10" : "11"}` : "cast: off" + (castLoaded ? " (LE Audio stays loaded until reboot)" : "")];
     if (cmd === "keys" || cmd.startsWith("keys ")) return keysReply(cmd);
+    if (cmd === "events" || cmd.startsWith("events ")) return eventsReply(cmd);
     if (cmd === "night") return ["night: off, schedule 22:30-06:30"];
     if (cmd === "radio list") return stations.length ? stations.map((x, i) => `${i + 1} ${x.name} ${x.url}`) : ["radio: no stations"];
     if (cmd.startsWith("radio add ")) {
@@ -305,7 +337,7 @@ export function startDemo() {
       for (let i = 0; i < b.length; i += 90) out.push("lrc+ " + btoa(String.fromCharCode(...b.subarray(i, i + 90))));
       return out.concat("lrc end");
     }
-    if (/^radio \d+$/.test(cmd) || /^radio https?:/.test(cmd)) { fake.rstate = "buffering"; return ["ok"]; }
+    if (/^radio \d+$/.test(cmd) || /^radio https?:/.test(cmd)) { fake.rstate = /owl/.test(cmd) ? "HLS: AC-3 not supported" : /master\.m3u8/.test(cmd) ? "https: low memory" : "buffering"; return ["ok"]; }
     if (cmd === "scene") return ["1 Cooling Summer Nap", "2 Soothing Colored Noise", "3 Campfire Rain"];
     return ["ok"];
   };

@@ -102,7 +102,6 @@
 .rfilters{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:.5rem 0}
 .rfilters select,#findBox select{font:inherit;color:var(--fg);background:var(--card);border:1px solid var(--line);border-radius:10px;min-height:44px;padding:6px 8px;min-width:0;width:100%}
 #findBox input[type=search]{font:inherit;color:var(--fg);background:transparent;border:1px solid var(--line);border-radius:10px;padding:.5rem .6rem;min-height:44px;width:100%;min-width:0}
-.rchk{display:flex;align-items:center;gap:.5rem;min-height:36px;font-size:.9rem;color:var(--mut)}
 /* equalizer editor (inside the equalizer's fx block) */
 .eqg{display:block;width:100%;height:120px;margin:.5rem 0 .2rem}
 .eqbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:.4rem 0}
@@ -240,3 +239,10 @@ div.warnbox{border-radius:10px;padding:.5rem .7rem}
 #playMsg:empty{display:none}
 .row>.ctl+.ctl{margin-left:0}
 #cwd{flex:1 1 12rem;min-width:0;overflow-wrap:anywhere}   /* a long path (inside an archive) gets its own line above the buttons */
+
+/* Diagnostics: recent events */
+.evbar{margin:.5rem 0;gap:.5rem}
+.evlist{list-style:none;margin:0;padding:0;max-height:260px;overflow:auto}
+.evlist li{padding:.25rem 0;border-top:1px solid var(--line);font-size:.9rem;overflow-wrap:anywhere}
+.evlist li:first-child{border-top:0}
+.evlist time{color:var(--mut);font-variant-numeric:tabular-nums;margin-right:.6rem}

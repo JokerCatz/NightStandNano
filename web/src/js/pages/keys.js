@@ -5,7 +5,7 @@ import { send, log } from "../core/link.js";
 
 //   keys c 1=play 2=next 3=prev h=none / keys p ... / keys m ... / keys last c2 next 3 s ago  (or: keys last none)
 const KEY_BTNS = ["c", "p", "m"], KEY_GS = ["1", "2", "3", "h"];
-const KEY_ACTS = { none: "keys.a.none", play: "keys.a.play", next: "keys.a.next", prev: "keys.a.prev", "vol+": "keys.a.volup", "vol-": "keys.a.voldn", stop: "keys.a.stop" };
+export const KEY_ACTS = { none: "keys.a.none", play: "keys.a.play", next: "keys.a.next", prev: "keys.a.prev", "vol+": "keys.a.volup", "vol-": "keys.a.voldn", stop: "keys.a.stop" };
 const KEY_PRESETS = {   // what `keys preset N` loads (firmware); only used to highlight the matching button
   1: { c: "play next prev none", p: "none none none none", m: "none none none none" },
   2: { c: "none none none none", p: "vol+ next none vol+", m: "vol- prev none vol-" },

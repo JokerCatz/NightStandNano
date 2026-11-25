@@ -26,7 +26,7 @@ export function onEvt(ev) {
   let i;
   while ((i = evtBuf.indexOf("\n")) >= 0) {
     const line = evtBuf.slice(0, i); evtBuf = evtBuf.slice(i + 1);
-    log("< " + line);
+    if (!(pending && pending.quiet)) log("< " + line);   // a quiet command's reply stays out of the log pane (polls)
     if (pending) {
       pending.lines.push(line);
       if (pending.until) { if (pending.until.test(line)) finish(); }   // sendUntil: only the terminating line ends it (the overall timeout stays)
@@ -39,17 +39,19 @@ function finish() { const p = pending; pending = null; if (p) { clearTimeout(p.t
 function pump() {
   if (pending || !queue.length || !app.chCmd) return;
   const p = pending = queue.shift(); p.lines = [];
-  log("> " + logCmd(p.cmd));
+  if (!p.quiet) log("> " + logCmd(p.cmd));
   app.chCmd.writeValueWithResponse(enc.encode(p.cmd)).then(() => { if (pending !== p) return; if (p.fast) finish(); else p.t = setTimeout(finish, p.until ? p.ms : 1500); })
     .catch(e => { log("write failed: " + e); if (pending === p) finish(); });
 }
-function enqueue(cmd, fast, until, ms) {
+function enqueue(cmd, fast, until, ms, quiet) {
   return new Promise(resolve => {
     if (app.link === "off" && !app.chCmd) { resolve([]); return; }
-    queue.push({ cmd, resolve, fast, until, ms }); pump();
+    queue.push({ cmd, resolve, fast, until, ms, quiet }); pump();
   });
 }
 export const send = cmd => enqueue(cmd, false);
+// Same as send(), but neither the command nor its reply is written to the log pane (for polls that would flood it).
+export const sendQuiet = cmd => enqueue(cmd, false, undefined, undefined, true);
 // For commands that reply with nothing on success (fx set ...): same queue, same order, but resolves (with no lines) as soon as the GATT
 // write has completed instead of after the reply's quiet gap. Anything the box does say is picked up by the next command's reply.
 export const sendFast = cmd => enqueue(cmd, true);

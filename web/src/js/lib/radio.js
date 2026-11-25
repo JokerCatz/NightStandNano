@@ -5,7 +5,7 @@
 //   radio/regions.js     country / genre tables
 //   radio/route.js       stationId() (tunetap's "u-<hash>" ids, used for the JSON export)
 // tunetap's UI files (ui-find.js, ui-fav.js) are tied to its router, player, i18n and icon sprite, so this file is a small
-// Nano version of them. Differences: the box does the playing (http and https both fine, HLS not supported; codec and bitrate
+// Nano version of them. Differences: the box does the playing (http, https and HLS are all fine; codec, bitrate and an HLS tag
 // are shown), and favourites are NOT kept in the browser: the card's radio.txt is the list (`radio list` / `radio add` / `radio del`).
 // Text comes from the page's string table (globalThis.NSN_I18N, strings.js + i18n.js): the DOM built here carries data-i18n* attributes, so
 // a language change is one applyDom pass; only the country / genre names (radio/regions.js has tw / cn / en) are re-set here.
@@ -22,22 +22,25 @@ const memStorage = { getItem: (k) => mem.get(k) ?? null, setItem: (k, v) => { me
 const CODEC_OK = /^(mp3|aac\+?|ogg|vorbis|opus|unknown|)$/i;
 const isM3u8 = (u) => { try { return new URL(u).pathname.toLowerCase().endsWith('.m3u8'); } catch { return false; } };
 
-// Which of a station's urls to send to the box: not HLS, and plain http first when there is one (no TLS on the box).
+// Which of a station's urls to send to the box: a direct stream first (plain http before https: TLS costs the box memory),
+// an HLS (.m3u8) playlist only when there is no direct one.
 export function boxUrl(urls) {
-  const ok = (urls || []).filter((u) => typeof u === 'string' && /^https?:\/\/[^\s|]+$/i.test(u) && !isM3u8(u));
-  return ok.find((u) => u.startsWith('http:')) || ok[0] || null;
+  const ok = (urls || []).filter((u) => typeof u === 'string' && /^https?:\/\/[^\s|]+$/i.test(u));
+  const pick = (l) => l.find((u) => u.startsWith('http:')) || l[0];
+  return pick(ok.filter((u) => !isM3u8(u))) || pick(ok) || null;
 }
 
-// One result row. hls: the box cannot play it at all; maybe: a soft warning (codec it may not decode, a playlist file).
+// One result row. hls: the url is an HLS playlist (plays, a few seconds slower to start); maybe: a soft warning (codec it may not decode, a playlist file).
 export function toRow(station) {
   const item = toItem(station);
   if (!item) return null;
   const url = boxUrl(item.urls);
   const codec = typeof station.codec === 'string' ? station.codec.replace(/[^A-Za-z0-9.+ -]/g, '').slice(0, 12) : '';
   const bitrate = Number.isInteger(station.bitrate) && station.bitrate > 0 && station.bitrate < 100000 ? station.bitrate : 0;
-  const hls = station.hls === 1 || station.hls === true || !url;
-  const pl = url && /\.(pls|m3u)$/i.test(new URL(url).pathname);
-  return { item, url, codec, bitrate, hls, maybe: !hls && (!CODEC_OK.test(codec) || pl), scheme: url ? url.split(':')[0] : '' };
+  if (!url) return null;
+  const hls = isM3u8(url);
+  const pl = /\.(pls|m3u)$/i.test(new URL(url).pathname);
+  return { item, url, codec, bitrate, hls, maybe: (!CODEC_OK.test(codec) || pl), scheme: url.split(':')[0] };
 }
 
 // the card's limits: name <= 63 UTF-8 bytes without | or control characters; url http(s)://, <= 255 bytes, no |
@@ -76,7 +79,7 @@ const slug = (s) => String(s).toLowerCase().replace(/[^a-z]+/g, "_").replace(/^_
 
 // mountRadio({ favBox, findBox, send, refresh, connected }): builds both sections into the two containers.
 export function mountRadio({ favBox, findBox, send, refresh, connected }) {
-  const rb = createRb({ fetch: window.fetch.bind(window), storage: memStorage });
+  const rb = createRb({ fetch: (...a) => window.fetch(...a), storage: memStorage });
 
   let saved = [];                       // [{ n, name, url }] from `radio list`
   const savedByKey = () => new Map(saved.map((s) => [streamKey(s.url), s]));
@@ -181,7 +184,6 @@ export function mountRadio({ favBox, findBox, send, refresh, connected }) {
   const kbps = ka(el("select"), "aria", "rn.kbps");
   kbps.append(k(el("option", { value: "0" }), "rn.kbpsAll"), el("option", { value: "64" }, "≥ 64 kbps"), el("option", { value: "128" }, "≥ 128 kbps"), el("option", { value: "192" }, "≥ 192 kbps"));
   const go = k(el("button", { type: "button", class: "primary" }), "rn.search");
-  const showHls = el("input", { type: "checkbox", id: "showHls" });
   const status = el("div", { class: "mut rnote", role: "status" });
   const ul = el("ul", { class: "rlist" });
   const more = k(el("button", { type: "button", hidden: true }), "rn.more");
@@ -189,7 +191,6 @@ export function mountRadio({ favBox, findBox, send, refresh, connected }) {
   findBox.append(
     el("div", { class: "row" }, el("div", { class: "grow", style: "display:flex" }, q), go),
     el("div", { class: "rfilters" }, country, tag, codec, kbps),
-    el("label", { class: "rchk", for: "showHls" }, showHls, k(el("span"), "rn.hlsToo")),
     status, ul, more);
   // a language change: only the region / genre names are looked up here; everything else carries its key
   I18N.onChange(() => { for (const sel of [country, tag]) for (const o of sel.options) if (o._nm) o.textContent = nameOf(o._nm); });
@@ -198,13 +199,14 @@ export function mountRadio({ favBox, findBox, send, refresh, connected }) {
     const { item } = r;
     const sv = r.url ? savedByKey().get(streamKey(r.url)) : null;
     const meta = [item.country, r.codec, r.bitrate ? r.bitrate + " kbps" : "", r.scheme].filter(Boolean).join(" · ");
-    const main = el("button", { type: "button", class: "rmain", disabled: r.hls },
+    const main = el("button", { type: "button", class: "rmain" },
       el("span", { class: "rname" }, item.name),
       meta ? el("span", { class: "rmeta" }, meta) : null);
-    if (r.hls) { ka(main, "title", "rn.hlsTitle"); main.append(k(el("span", { class: "rtag bad" }), "rn.hlsTag")); }
-    else { if (r.maybe) main.append(k(el("span", { class: "rtag" }), "rn.maybeTag")); if (sv) main.append(k(el("span", { class: "rtag ok" }), "rn.savedTag")); }
+    if (r.hls) { ka(main, "title", "rn.hlsTitle"); main.append(k(el("span", { class: "rtag" }), "rn.hlsTag")); }
+    if (r.maybe) main.append(k(el("span", { class: "rtag" }), "rn.maybeTag"));
+    if (sv) main.append(k(el("span", { class: "rtag ok" }), "rn.savedTag"));
     main.onclick = () => play(r.url, status);
-    const star = el("button", { type: "button", class: "star", disabled: r.hls, "aria-pressed": String(!!sv) }, sv ? "★" : "☆");
+    const star = el("button", { type: "button", class: "star", "aria-pressed": String(!!sv) }, sv ? "★" : "☆");
     ka(star, "aria", sv ? "rn.unsaveAria" : "rn.saveAria", { name: item.name });
     star.onclick = async () => {
       star.disabled = true;
@@ -216,21 +218,20 @@ export function mountRadio({ favBox, findBox, send, refresh, connected }) {
     return el("li", { class: "rrow" }, main, star);
   }
 
-  let rows = [], rawCount = 0, lastCount = 0, loading = false, failed = false, token = 0, searched = false, hiddenHls = 0;
+  let rows = [], rawCount = 0, lastCount = 0, loading = false, failed = false, token = 0, searched = false;
   const seen = new Set();
   const codecOf = (r) => { const c = r.codec.toLowerCase(); return c.startsWith("aac") ? "aac" : c === "mp3" ? "mp3" : (c === "ogg" || c === "vorbis" || c === "opus") ? "ogg" : c; };
-  const passes = (r) => (showHls.checked || !r.hls) && (!codec.value || codecOf(r) === codec.value) && (!r.bitrate ? +kbps.value === 0 : r.bitrate >= +kbps.value);
+  const passes = (r) => (!codec.value || codecOf(r) === codec.value) && (!r.bitrate ? +kbps.value === 0 : r.bitrate >= +kbps.value);
   function renderResults() {
     const vis = rows.filter(passes);
     ul.textContent = "";
     for (const r of vis) ul.append(rowEl(r));
-    hiddenHls = rows.filter((r) => r.hls && !showHls.checked).length;
     more.hidden = !hasMore(lastCount) || failed || !rows.length;
     more.disabled = loading;
     if (loading && !rows.length) say(status, "rn.searching");
     else if (failed) say(status, "rn.rbFail", null, true);
     else if (searched && !vis.length) say(status, rows.length ? "rn.noMatchHid" : "rn.noMatch", { n: rows.length });
-    else if (searched) say(status, hiddenHls ? "rn.resultsHls" : "rn.results", { n: vis.length, h: hiddenHls });
+    else if (searched) say(status, "rn.results", { n: vis.length });
     else say(status, null);
   }
   async function load(append) {
@@ -254,7 +255,7 @@ export function mountRadio({ favBox, findBox, send, refresh, connected }) {
   q.onkeydown = (e) => { if (isSubmitKey(e)) { e.preventDefault(); load(false); } };
   more.onclick = () => { if (!loading) load(true); };
   for (const s of [country, tag]) s.onchange = () => load(false);
-  for (const s of [codec, kbps, showHls]) s.onchange = renderResults;
+  for (const s of [codec, kbps]) s.onchange = renderResults;
 
   renderSaved("fav.hint");
   if (connected()) reload();

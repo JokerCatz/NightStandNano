@@ -31,6 +31,7 @@
                            else connects after ~3 s); ?demo&clock=none starts it with no time (src=none), &tz=<POSIX TZ> sets its zone (default CST-8).
     ?demo&hw=spi|ledoff    the fake box reports the SD card in SPI mode / the LED disabled in the hardware settings; &hw=pending adds `hw pending 1`.
     ?demo&shed=1           the fake box reports st.fxshed=1 (heavy effects paused because it is busy); ?demo&dac=none makes `ratetest` refuse (no dac).
+    ?demo&evreset=1        the fake box restarts its event sequence (like a reboot) ~10 s after load; the events poll of Diagnostics must pick that up.
     ?demo&drop=<s>         drops the fake Bluetooth link <s> seconds after load (the page reconnects by itself); the first `out cast` in the
                            demo drops it too, like the real box; ?demo&cast=bad|half|fail fakes underflows / one stream down / a failing first `out cast`.
 -->
@@ -288,6 +289,7 @@
     <div id="keyGrid"></div>
     <div class="mut help" data-i18n="keys.hint.delay">沒有設定連按兩下、連按三下的按鍵，按下去立刻動作；否則按一下要等 0.4 秒，確認沒有接著連按。</div>
     <div id="keyLast" data-i18n="keys.last.none">還沒有偵測到按鍵。按一下耳機上的按鍵試試。</div>
+    <div class="mut"><a href="#/settings/diag" data-i18n="keys.seelog">在診斷頁查看按鍵紀錄</a></div>
   </div>
 </section>
 
@@ -341,6 +343,13 @@
       <li><a href="https://github.com/JokerCatz/NightStandNano/releases/latest" target="_blank" rel="noopener"><span data-i18n="about.releases">下載韌體</span><span class="sr" data-i18n="link.newtab">（在新分頁開啟）</span></a></li>
       <li><a href="https://github.com/JokerCatz/NightStandNano" target="_blank" rel="noopener"><span data-i18n="about.repo">說明與原始碼</span><span class="sr" data-i18n="link.newtab">（在新分頁開啟）</span></a></li>
     </ul>
+  </div>
+  <div class="card">
+    <h3 data-i18n="ev.title">最近的事件</h3>
+    <div class="mut" data-i18n="ev.help">按一下耳機上的按鍵，這裡就會顯示收到了什麼。</div>
+    <div class="row evbar"><button type="button" id="evRefresh" data-i18n="ev.refresh">重新整理</button><button type="button" id="evClear" data-i18n="ev.clear">清除</button></div>
+    <ul class="evlist" id="evList" aria-live="off"></ul>
+    <div class="mut" id="evEmpty" data-i18n="ev.empty">還沒有事件。</div>
   </div>
   <div class="card"><h3 data-i18n="sys.log">紀錄</h3><pre id="log"></pre></div>
 </section>
