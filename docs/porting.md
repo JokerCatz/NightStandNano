@@ -183,3 +183,7 @@ typedef struct nsn_sink {
 
 - `ver` 回報專案版本、IDF 版本與 ELF SHA 前 9 碼（建置可重現，所以沒有建置日期，ELF SHA 用來區分同一版本的兩次建置）。開機日誌第一行也有版本。
 - 版本來源（`app/CMakeLists.txt`）：`idf.py -DPROJECT_VER=1.2.3 build`（發行用）> `git describe --tags --dirty`（有 tag 時）> repo 根目錄 `version.txt` 加上 commit（`0.1.0-19c6046`，沒有 git 時只有 `0.1.0`）。版本在設定階段讀取，commit 或打 tag 後請執行 `idf.py reconfigure`。
+
+## Optional files on the card (FM backend)
+`/sdcard/_player/roms/ym2608_adpcm_rom.bin`: the 8192-byte ADPCM-A image of the YM2608's rhythm section, in the layout ymfm's example player reads (`ym2608_adpcm_rom.bin`). It is not part of this repository and not distributed with it: the chip's internal ROM is not in VGM / S98 files, and the licence of reconstructed copies is unclear. A user who wants the rhythm channels of YM2608 (PC-88 / PC-98) files supplies an image he is entitled to use; without the file those channels are silent and one event per play session says so.
+The component takes the image through `fmvgm_set_rom(FMVGM_ROM_YM2608_RHYTHM, data, size)`; the host keeps the memory alive while any file is open. A host without a card simply never calls it.

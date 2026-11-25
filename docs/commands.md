@@ -31,13 +31,14 @@ BLE 沒有加密，範圍內的任何人都能連線與控制播放，這是設�
 
 | 指令 | 說明 |
 |---|---|
-| `play <路徑或資料夾>` | 檔案、資料夾（連續播放）、`.zip`（當資料夾走進去，`<zip>/<項目>` 也可）。回覆 `play: ESP_OK`，或 `play: <esp 錯誤名>`；`.vgm` / `.vgz` 由 `vgmgate.c` 看標頭分流：GME 能播的晶片（SN76489、YM2612、YM2413）給 GME，YM2151／YM2203（單或雙晶片）給 FM 後端（`components/fmvgm`），`.s98` 一律給 FM 後端；單一檔案被拒絕時是 `play: ESP_ERR_NOT_SUPPORTED unsupported chip YM2608, OKIM6295`（寫了沒有人能播的晶片）、`… unsupported chip SN76489 + YM2151 (mixed)`（GME 的晶片與 FM 晶片混在同一檔，一個檔只能由一個後端播）或 `… too heavy for Bluetooth AAC`（這個晶片組在目前輸出與核心配置下已知太重，換輕的輸出就能播）。資料夾、播放清單、zip 內打不開或被拒絕的檔會被跳過，`events` 多一行 `skip <檔名>: chip YM2151`、`skip <檔名>: too heavy for Bluetooth AAC`（或 GME 的理由）；播到一半 FM 晶片的產生跟不上（見 `dbg fm`）也是同樣的一行，然後換下一首 |
+| `play <路徑或資料夾>` | 檔案、資料夾（連續播放）、`.zip`（當資料夾走進去，`<zip>/<項目>` 也可）。回覆 `play: ESP_OK`，或 `play: <esp 錯誤名>`；`.vgm` / `.vgz` 由 `vgmgate.c` 看標頭分流：GME 能播的晶片（SN76489、YM2612、YM2413）給 GME，YM2151／YM2203（單或雙晶片）給 FM 後端（`components/fmvgm`），`.s98` 一律給 FM 後端；單一檔案被拒絕時是 `play: ESP_ERR_NOT_SUPPORTED unsupported chip YM2608, OKIM6295`（寫了沒有人能播的晶片）、`… unsupported chip SN76489 + YM2151 (mixed)`（GME 的晶片與 FM 晶片混在同一檔，一個檔只能由一個後端播）或 `… file too large (N MB, M MB free)`（檔案展開後比 PSRAM 一個區塊能給的還大，上限最多 24 MB；.vgz 在原地展開）或 `… too heavy for Bluetooth AAC`（這個晶片組在目前輸出與核心配置下已知太重，換輕的輸出就能播）。資料夾、播放清單、zip 內打不開或被拒絕的檔會被跳過，`events` 多一行 `skip <檔名>: chip YM2151`、`skip <檔名>: too heavy for Bluetooth AAC`（或 GME 的理由）；播到一半 FM 晶片的產生跟不上（見 `dbg fm`）也是同樣的一行，然後換下一首 |
 | `stop`、`pause`、`resume` | 待機時 `resume` 從書籤（上次停止的位置）接著播 |
 | `next`、`prev` | 多曲檔（晶片音樂）先在檔內換曲 |
 | `vol [0-100]` | 目前輸出的音量（每種輸出各自記住），不會超過 `vollimit` |
 | `vollimit [0-100]` | 音量上限，預設 100，任何路徑都不會超過 |
 | `mode folder\|shuffle\|one\|once` | 資料夾循環、隨機、單曲重複、播完停止 |
 | `gapless [on\|off]` | 無縫播放（同取樣率、同輸出時），預設開 |
+| `partial [on\|off]` | 部分播放（預設開，NVS `partial`，UART 與 BLE 都可）：晶片檔需要沒人能播的**取樣晶片**（Sega PCM、K053260、QSound …）而其餘晶片能播時，不含取樣晶片地播並在 `events` 寫一行 `partial <檔名>: missing <晶片>`；關閉則像以前一樣拒絕。負責旋律的晶片缺了一律拒絕（規則表在 `vgmgate.c`）。下一個檔案生效 |
 | `expfmt [on\|off]` | 「實驗性」tracker／AdLib 格式（a2m a2t d00 sa2 …，見 `pc_chipseq.c`）：預設開，下一個檔起生效 |
 | `rg [off\|track\|album]` | 依標籤套用 ReplayGain，下一首起生效 |
 | `ls [路徑]` | 列出資料夾（預設 `/sdcard`）；資料夾與 `.zip` 結尾加 `/` |
@@ -144,7 +145,9 @@ LDAC 或 Auracast 時重型效果自動暫停；核心 1 連續過載 2 秒也�
 
 不認得的指令回 `?`；需要參數卻沒給、或不該有參數卻給了，也回 `?`。
 
-## `dbg fm`（只有 UART；FM 後端 `components/fmvgm`，YM2151 / YM2203 的 VGM 與 S98）
+## `dbg fm`（只有 UART；FM 後端 `components/fmvgm`：YM2151 YM2203 YM2608 YM2610/B YM2612 AY8910 SN76489 OKIM6295 的 VGM 與 S98）
+
+階段 2：`dbg fm core auto`（預設）= 每個檔案、每種輸出由 `fmglue.c` 的負載表解「晶片 → 核心」的指派（全放核心 0 若可，否則最低尖峰的切分，雙核心各一個工作者）；`dbg fm plan <數字>` 強制指派（每顆晶片一位，標頭順序，0 = 解碼任務裡、1 = 核心 0、2 = 核心 1；`plan auto` 解除）；`dbg fm stat` 另列每條 lane 的放置與忙碌微秒。YM2608 的節奏 ROM（可選）：`/sdcard/_player/roms/ym2608_adpcm_rom.bin`（8192 位元組），沒有時節奏聲部靜音、`events` 每個播放工作階段寫一行 `rhythm silent: ym2608_adpcm_rom.bin missing`。
 | 指令 | 說明 |
 |---|---|
 | `dbg fm core 0\|1\|inline` | 晶片合成在哪裡跑：核心 0 的常駐工作者、核心 1 的工作者、或直接在解碼任務的 `render()` 裡（預設 `inline`，量測後依 `fmglue.c` 的註解決定）。播放中也能換，下一個區塊生效 |

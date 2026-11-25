@@ -5,6 +5,7 @@
 #include <strings.h>
 #include <stdlib.h>
 #include <dirent.h>
+#include <errno.h>
 #include <sys/stat.h>
 #include "esp_log.h"
 #include "esp_heap_caps.h"
@@ -90,6 +91,7 @@ static volatile int s_vmax = 100;
 static volatile bool s_dirty;
 static volatile int s_vout;                  /* id of the sink whose volume is in force while a session runs; 0 = idle */
 static volatile bool s_gapless = true;
+static volatile bool s_partial = true;               /* partial playback: a sample chip nobody here plays is left out and the rest plays (vgmgate.c); off = refuse such files. NVS "partial" */
 static volatile bool s_soft_pending;         /* a session just started: the first sink start arms the ramp */
 static volatile uint32_t s_soft_left, s_soft_total;   /* soft start: output frames still to ramp / the ramp's length */
 static volatile uint32_t s_wr_frames;        /* frames written into the ring this session (output units): track boundaries are reported in them */
@@ -404,43 +406,83 @@ static void chip_tags_apply(const trk_t *t, const char *path)
  * common); one that is not gzip'd is used as it is. 0 ok, -1 not (the reason is logged). */
 static bool is_vgm_ext(const char *path) { const char *e = strrchr(path, '.'); return e && (!strcasecmp(e, ".vgm") || !strcasecmp(e, ".vgz")); }
 static bool is_s98_ext(const char *path) { const char *e = strrchr(path, '.'); return e && !strcasecmp(e, ".s98"); }
+/* How big a chip file (VGM / S98 and the rest, un-gzipped) may be: whatever PSRAM can give in one block, less a reserve for everything else that lives there (the output ring, the resampler tables,
+ * the radio buffers, the decoder state of the next track), and never more than 24 MB. A 10-20 MB Neo Geo VGM fits when nothing else is large; the size seen and the size free go into the reason. */
+#define CHIP_FILE_HARD_MAX (24u << 20)
+#define CHIP_FILE_RESERVE (2u << 20)
+static uint32_t chip_file_cap(void)
+{
+    size_t big = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
+    uint32_t cap = big > CHIP_FILE_RESERVE ? (uint32_t)(big - CHIP_FILE_RESERVE) : 0;
+    return cap > CHIP_FILE_HARD_MAX ? CHIP_FILE_HARD_MAX : cap;
+}
+static char s_load_why[56];                         /* why the last load_chip_file refused, for the event / the play reply */
 static int load_chip_file(const char *path, bool zip, const char *zpath, const char *inner, uint8_t **memp, uint32_t *lenp)
 {
     uint8_t *mem = NULL; uint32_t len = 0;
+    s_load_why[0] = 0;
     if (zip) {
         int rc = nsn_zip_read(zpath, inner, NSN_ZIP_MAX_ENTRY, &mem, &len);
-        if (rc) { ESP_LOGE(TAG, "zip entry %s refused: %s", path, nsn_zip_err(rc)); return -1; }
+        if (rc) { ESP_LOGE(TAG, "zip entry %s refused: %s", path, nsn_zip_err(rc)); snprintf(s_load_why, sizeof s_load_why, "zip entry: %s", nsn_zip_err(rc)); return -1; }
     } else {
         FILE *f = fopen(path, "rb");
         if (!f) { ESP_LOGE(TAG, "cannot open %s", path); return -1; }
         fseek(f, 0, SEEK_END); long sz = ftell(f); fseek(f, 0, SEEK_SET);
-        if (sz <= 0 || sz > 8 * 1024 * 1024) { ESP_LOGE(TAG, "chip file size %ld refused", sz); fclose(f); return -1; }
+        uint8_t m2[2] = { 0, 0 };
+        bool gz = is_vgm_ext(path) && sz > 18 && fread(m2, 1, 2, f) == 2 && m2[0] == 0x1f && m2[1] == 0x8b;
+        fseek(f, 0, SEEK_SET);
+        uint32_t cap = chip_file_cap();
+        if (gz) {                                                           /* gzip'd VGM: read into the end of the buffer the inflated data will fill (no second copy of a 10 MB file) */
+            uint8_t tl[4]; uint32_t isize = 0;
+            if (fseek(f, sz - 4, SEEK_SET) != 0 || fread(tl, 1, 4, f) != 4 || pc_gunzip_isize(tl, 4, &isize) != 0) { ESP_LOGE(TAG, "gzip trailer of %s unreadable", path); fclose(f); return -1; }
+            fseek(f, 0, SEEK_SET);
+            uint32_t need = isize + pc_gunzip_margin(isize);
+            if (isize > cap || need > cap + 65536u || (uint64_t)sz > need) {
+                ESP_LOGE(TAG, "%s: %lu bytes inflated needs %lu, PSRAM allows %lu", path, (unsigned long)isize, (unsigned long)need, (unsigned long)cap);
+                snprintf(s_load_why, sizeof s_load_why, "file too large (%lu MB, %lu MB free)", (unsigned long)((isize + 0xFFFFF) >> 20), (unsigned long)(cap >> 20)); fclose(f); return -1;
+            }
+            mem = heap_caps_malloc((size_t)need + 1, MALLOC_CAP_SPIRAM);
+            uint32_t off = need - (uint32_t)sz;
+            if (!mem || fread(mem + off, 1, (size_t)sz, f) != (size_t)sz) { ESP_LOGE(TAG, "cannot read %s", path); heap_caps_free(mem); fclose(f); return -1; }
+            fclose(f);
+            if (pc_gunzip_inplace(mem, off, (uint32_t)sz, &len) != 0) { ESP_LOGE(TAG, "gunzip failed: %s", path); heap_caps_free(mem); return -1; }
+            *memp = mem; *lenp = len;
+            return 0;
+        }
+        if (sz <= 0 || (uint64_t)sz > cap) {
+            ESP_LOGE(TAG, "chip file size %ld refused (PSRAM allows %lu)", sz, (unsigned long)cap);
+            if (sz > 0) snprintf(s_load_why, sizeof s_load_why, "file too large (%lu MB, %lu MB free)", (unsigned long)((sz + 0xFFFFF) >> 20), (unsigned long)(cap >> 20));
+            fclose(f); return -1;
+        }
         mem = heap_caps_malloc((size_t)sz, MALLOC_CAP_SPIRAM);
         if (!mem || fread(mem, 1, (size_t)sz, f) != (size_t)sz) { ESP_LOGE(TAG, "cannot read %s", path); heap_caps_free(mem); fclose(f); return -1; }
         fclose(f);
         len = (uint32_t)sz;
     }
-    if (is_vgm_ext(path) && len > 2 && mem[0] == 0x1f && mem[1] == 0x8b) {          /* gzip'd VGM */
+    if (is_vgm_ext(path) && len > 2 && mem[0] == 0x1f && mem[1] == 0x8b) {          /* gzip'd VGM from a zip entry: the entry and its inflated copy are both in PSRAM */
         uint8_t *raw = NULL; uint32_t rl = 0;
-        if (pc_gunzip(mem, len, &raw, &rl) != 0 || !raw) { ESP_LOGE(TAG, "gunzip failed: %s", path); heap_caps_free(mem); return -1; }
+        uint32_t cap = chip_file_cap();
+        int rc = pc_gunzip_max(mem, len, &raw, &rl, cap > len ? cap - len : 0);
+        if (rc != 0 || !raw) { ESP_LOGE(TAG, "gunzip failed (%d): %s", rc, path); if (rc == -E2BIG) snprintf(s_load_why, sizeof s_load_why, "file too large (more than %lu MB free)", (unsigned long)(cap >> 20)); heap_caps_free(mem); return -1; }
         heap_caps_free(mem); mem = raw; len = rl;
     }
     *memp = mem; *lenp = len;
     return 0;
 }
 
-/* "skip <file>: chip YM2151" / "skip <file>: too heavy for Bluetooth AAC" for the events list (56 characters at most): the file name is cut to fit, the reason comes first */
-static void skip_event(const char *path, const char *what)
+/* "skip <file>: chip YM2151" / "skip <file>: too heavy for Bluetooth AAC" / "partial <file>: missing SegaPCM" for the events list (56 characters at most): the file name is cut to fit, the reason comes first */
+static void file_event(const char *kind, const char *path, const char *what)
 {
     const char *base = strrchr(path, '/'); base = base ? base + 1 : path;
-    char b[64]; int room = 55 - (int)strlen("skip : ") - (int)strlen(what);
+    char b[64]; int room = 55 - (int)strlen(kind) - (int)strlen(" : ") - (int)strlen(what);
     if (room < 8) room = 8;
     int n = (int)strlen(base);
     if (n > room) { n = room - 2; while (n > 0 && ((unsigned char)base[n] & 0xC0) == 0x80) n--; snprintf(b, sizeof b, "%.*s..", n > 58 ? 58 : n, base); }
     else snprintf(b, sizeof b, "%.60s", base);
-    ESP_LOGW(TAG, "skip %s: %s", path, what);
-    nsn_event("skip %s: %s", b, what);
+    ESP_LOGW(TAG, "%s %s: %s", kind, path, what);
+    nsn_event("%s %s: %s", kind, b, what);
 }
+static void skip_event(const char *path, const char *what) { file_event("skip", path, what); }
 static void vgm_refused(const char *path, const char *why) { char w[64]; snprintf(w, sizeof w, "chip %s", why); skip_event(path, w); }
 
 static int64_t s_fmo_start, s_fmo_last, s_fmo_win0; static uint32_t s_fmo_low_us;   /* FM overload watch over the output ring (play_one): when the sink started, last look, window start, microseconds the ring was nearly empty in the window */
@@ -482,19 +524,23 @@ static int open_track(const char *path, trk_t *t)
         if (be->open(&h, r, 0) != 0) return -1;
     } else if (be == &backend_gme || be == &pc_backend_chain || be == &pc_backend_ym || be == &pc_backend_p8 || be == &pc_backend_fmvgm) {
         uint8_t *mem = NULL; uint32_t len = 0;
-        if (load_chip_file(path, zip, zpath, inner, &mem, &len) != 0) return -1;
-        if (be == &backend_gme && is_vgm_ext(path)) {                  /* GME for the chips it plays, fmvgm for the FM chips it lacks, a refusal for the rest */
-            char why[40];
-            int rt = nsn_vgm_route(mem, len, why, sizeof why);
+        if (load_chip_file(path, zip, zpath, inner, &mem, &len) != 0) { if (s_load_why[0]) skip_event(path, s_load_why); return -1; }
+        uint64_t drop = 0;
+        if (be == &backend_gme && is_vgm_ext(path)) {                  /* GME for the chips it plays, fmvgm for the chips it lacks (and for mixes), a refusal for the rest; sample chips nobody plays are left out when `partial` is on */
+            char why[40]; nsn_vgm_partial_t pt;
+            int rt = nsn_vgm_route(mem, len, why, sizeof why, s_partial, &pt);
             if (rt < 0) { heap_caps_free(mem); vgm_refused(path, why); return -1; }
-            if (rt == NSN_VGM_FM) be = &pc_backend_fmvgm;
+            if (rt == NSN_VGM_FM) { be = &pc_backend_fmvgm; drop = pt.drop; }
+            if (pt.drop) { char w[48]; snprintf(w, sizeof w, "missing %s", pt.names); file_event("partial", path, w); }
         }
         if (be == &pc_backend_fmvgm) {
             int sk = pick_sink();
             fmvgm_info_t pi;
+            nsn_fm_load_rom();                                          /* the optional YM2608 rhythm ROM (a no-op unless the card has the file and it is not loaded yet) */
+            fmvgm_set_drop(drop);
             if (sk && fmvgm_probe(mem, len, &pi, NULL) == 0) {              /* known too heavy for this output? (fmglue.c): skip it before anything is built; it plays on a lighter one */
                 char w[40], what[64];
-                if (nsn_fm_check(&pi, sk, sk == 2 ? nsn_bt_codec_name() : "", w, sizeof w) != 0) { heap_caps_free(mem); snprintf(what, sizeof what, "too heavy for %s", w); skip_event(path, what); nsn_fm_note_skip(false); return -1; }
+                if (nsn_fm_check(&pi, sk, sk == 2 ? nsn_bt_codec_name() : "", true, w, sizeof w) != 0) { heap_caps_free(mem); snprintf(what, sizeof what, "too heavy for %s", w); skip_event(path, what); nsn_fm_note_skip(false); return -1; }
             }
             fmvgm_set_out_rate(nsn_fm_out_rate(sk ? sk : nsn_sink_auto()));
         }
@@ -509,6 +555,13 @@ static int open_track(const char *path, trk_t *t)
             ESP_LOGE(TAG, "decoder open failed: %s%s%s", path, why[0] ? ": " : "", why);
             if (why[0]) { const char *b = strrchr(path, '/'); char w[40]; snprintf(w, sizeof w, "%s", why); char *x = strstr(w, " for this emulator"); if (x) *x = 0; nsn_event("skip %.24s: %.26s", b ? b + 1 : path, w); }
             close_track(t); return -1;
+        }
+        if (be == &pc_backend_fmvgm) {
+            fmvgm_info_t fi; fmvgm_info(h, &fi);
+            if (fi.rom_missing) {                                      /* a YM2608 without its rhythm ROM: the rhythm channels are silent. One event per session, the log line every time */
+                ESP_LOGW(TAG, "%s: YM2608 rhythm silent, optional ROM file /sdcard/_player/roms/ym2608_adpcm_rom.bin is missing", path);
+                if (nsn_fm_rom_event_once()) nsn_event("rhythm silent: ym2608_adpcm_rom.bin missing");
+            }
         }
         if (be == &backend_gme && off > 0 && (int)off < be->track_count(h) && be->start_track(h, (int)off) == 0) t->sub0 = (int)off;
     } else {
@@ -786,6 +839,7 @@ static int cmp_name(const void *a, const void *b) { return strcasecmp((const cha
 static void run_session(void)
 {
     int fails = 0;
+    nsn_fm_session_start();
     s_eof = false; s_underruns = 0; s_wr_frames = 0;
     s_soft_pending = s_n > 0 && strcmp(s_list[s_idx], "bt:in") != 0;     /* a phone stream has its own volume in front of ours and must not be delayed */
     while (!s_stop && s_n > 0) {
@@ -854,21 +908,22 @@ static void gate_task(void *arg)
         char zp[NAME_MAX_]; const char *in = NULL; uint8_t *mem = NULL; uint32_t len = 0;
         bool z = nsn_zip_split(j->path, zp, sizeof zp, &in);
         j->refused = false;
-        if (load_chip_file(j->path, z, zp, in, &mem, &len) == 0) {
-            bool fm = false;
+        if (load_chip_file(j->path, z, zp, in, &mem, &len) != 0) { if (s_load_why[0]) { j->refused = true; snprintf(j->why, j->n, "%s", s_load_why); } }
+        else {
+            bool fm = false; uint64_t drop = 0;
             if (is_vgm_ext(j->path)) {
-                char chips[40];
-                int rt = nsn_vgm_route(mem, len, chips, sizeof chips);
+                char chips[40]; nsn_vgm_partial_t pt;
+                int rt = nsn_vgm_route(mem, len, chips, sizeof chips, s_partial, &pt);
                 if (rt < 0) { j->refused = true; snprintf(j->why, j->n, "unsupported chip %s", chips); }
-                else fm = rt == NSN_VGM_FM;
+                else { fm = rt == NSN_VGM_FM; drop = fm ? pt.drop : 0; }
             } else fm = true;                                       /* .s98 */
             fmvgm_info_t fi;
             if (fm && !j->refused) {
-                if (fmvgm_probe(mem, len, &fi, NULL) != 0) { j->refused = true; snprintf(j->why, j->n, "unsupported %s", fmvgm_error()); }
+                if (fmvgm_probe_drop(mem, len, &fi, NULL, drop) != 0) { j->refused = true; snprintf(j->why, j->n, "unsupported %s", fmvgm_error()); }
                 else {
                     int sk = pick_sink();
                     char w[40];
-                    if (sk && nsn_fm_check(&fi, sk, sk == 2 ? nsn_bt_codec_name() : "", w, sizeof w) != 0) { j->refused = true; snprintf(j->why, j->n, "too heavy for %s", w); }
+                    if (sk && nsn_fm_check(&fi, sk, sk == 2 ? nsn_bt_codec_name() : "", false, w, sizeof w) != 0) { j->refused = true; snprintf(j->why, j->n, "too heavy for %s", w); }
                 }
             }
             heap_caps_free(mem);
@@ -1064,6 +1119,8 @@ void nsn_player_set_dacmax(uint32_t hz) { s_dacmax = hz ? pc_dacmax_norm((int)hz
 uint32_t nsn_player_dacmax(void) { return s_dacmax; }
 
 void nsn_player_set_gapless(bool on) { s_gapless = on; s_dirty = true; }
+void nsn_player_set_partial(bool on) { s_partial = on; s_dirty = true; }
+bool nsn_player_partial(void) { return s_partial; }
 
 /* The "experimental" tier of pc_chipseq.c (AdPlug readers that fuzzing found the most in: a2m a2t d00 herad lds, the u6m / protrack / mid families, pis; libxmp's .ice) plays only when
  * a source says so. Nano registered none, so those suffixes were claimed by backend_for() and refused at open. Owner rule: support everything that can be played. Default on; `expfmt off`
@@ -1083,6 +1140,7 @@ void nsn_player_init_settings(void)
     }
     nsn_fm_init();
     s_gapless = nsn_settings_get_i32("gapless", 1) != 0;
+    s_partial = nsn_settings_get_i32("partial", 1) != 0;
     s_expfmt = nsn_settings_get_i32("expfmt", 1) != 0;
     pc_tier_set_source(expfmt_src);
     s_dacmax = nsn_settings_get_i32("dacmax", 0) > 0 ? pc_dacmax_norm(nsn_settings_get_i32("dacmax", 0), 384000) : 0;
@@ -1102,6 +1160,7 @@ void nsn_player_persist(void)
     for (int o = 1; o < nsn_sink_count(); o++) if (s_ovol[o] >= 0) nsn_settings_set_i32(nsn_sink_get(o + 1)->vol_key, s_ovol[o]);
     nsn_settings_set_i32("vollimit", s_vmax);
     nsn_settings_set_i32("gapless", s_gapless ? 1 : 0);
+    nsn_settings_set_i32("partial", s_partial ? 1 : 0);
     nsn_settings_set_i32("dacmax", (int)s_dacmax);
 }
 

@@ -304,3 +304,56 @@ GME 檔照常（vgz、nsf、gbs；SID 不受影響）；`gen_vgm_cases.py` 的 2
 **驗證**：play／stop 週期 2 秒（`t.mp3`、`t.flac`、`t.ogg`、`t.m4a` 輪流），3 次 × 280 輪（為最差基準 47 的 5.9 倍）全數存活，`underflows=0`、`send_err=0`。副作用：`cast` 的 `gap_max_us` 由 11–12 ms 變成 30–32 ms（flash 寫入期間 esp_timer 任務被延後；之前根本撐不到那一刻），`underflows` 仍 0。
 **沒查**：flash 擦寫時 10 ms 計時器延遲約 30 ms 對接收端的影響（沒有在 JukeDial 收聽下量）；控制器其他可能不在 IRAM 的回呼（這次的測試沒有再出現）。
 
+
+## FM backend stage 2 (2026-11-26): split cores, new chips, outputs (board ESP32-S31, synthetic streams)
+**Everything here is a figure for synthetic register streams** (`tools/hosttest/gen_fm2_vgm.py`, 20 s files of the card demos, gate 0.7 = "typical"; ADPCM / OKI data is random bytes), 48 kHz output, 24-tap producer-side resampler, USB DAC unless said otherwise. `cpu` = `st`'s per-core percent (three samples 1.5 s apart after 4 s, +-10 points between repeats of the same file); `lane` = the producer's own wall time per second of audio (`dbg fm stat`; it includes being preempted, so it is higher than the CPU it uses and can exceed 100 % without an underrun while the ring stays full). No row had an output underrun (`und`) unless stated.
+
+**Bit-exactness (PC and board).** `dbg fm bench` (board) = `test_fmvgm bench` (PC) for every file tried, same sums, same output hash, same table hash: YM2608 vgm (with the 8 KB test ROM) 587d118d and without it 5414d525, YM2608 dense 6e7a28f1, YM2610 4325f8c1, YM2610B bf600631, YM2612 + PCM bank 747c4311, AY8910 9b179db1, OKIM6295 88a1f419, YM2151 + SN76489 835f8471, YM2151 + OKIM6295 cdd96f05, dual YM2151 47e8dd25, dual YM2151 dense 06ddbc2d (not re-run on the board: busy), YM2612 typical a0839801, YM2151 + YM2203 mix 3d584c01, YM2610 with 8.4 MB ADPCM (.vgz) fd72ad49. On the PC the same files (`test_fmvgm run`) equal an independent reference (`tools/hosttest/refrun.cpp`, unpatched ymfm from upstream + the MAME cores, its own walker) in raw chip sum and sample count for 60 files incl. 16 random-register stress streams of OPNA / OPNB / OPNB(B) / OPN2 and S98 (YM2608 with DELTA-T loaded through register 0x08); the three ymfm patches are therefore still bit-exact on the new chip families. Not on the board: `ym2610_huge.vgz` (bench loads with a plain gunzip and runs out of memory: "gunzip failed", the player refuses it before that), `ym2203_ym2151_demo`, dual dense (a bench was still running when asked).
+
+**One chip alone on one core (typical streams, DAC): `st` cpu of that core / lane ms per second**
+
+| chip (file) | core 0 | core 1 | note |
+|---|---|---|---|
+| YM2608 typical (rhythm ROM present, DELTA-T) | 64 / 896 | 63 / 868 | dense stream: 90 / 914 and 69 / 887 |
+| YM2610 (ADPCM-A + B) | 70 / 707 | 64 / 683 | |
+| YM2610B | 86 / 889 | 68 / 858 | |
+| AY8910 | 28 / 228 | 33 / 219 | |
+| OKIM6295 (4 voices) | 12 / 90 | 19 / 88 | |
+| SN76489 (in YM2151 + SN76489, SN on core 0 / core 1) | 22 / 271 | 35 / 257 | the YM2151 lane is 730 / 759 |
+| YM2612 (in YM2612 + YM2151) | 55 / 664 | 62 / 642 | the YM2151 lane is 723 / 748; alone a YM2612 file goes to GME (about 21 % on core 1) |
+These gave the weights in `fmglue.c` (conservative reading of the larger run, less the base): YM2608 60, YM2610 62, YM2610B 72, YM2612 55, AY8910 25, SN76489 19, OKIM6295 11 (YM2151 76 / 69 and YM2203 55 / 50 from stage 1). The `st` cpu figure scatters (the dense OPNA stream read 69 and 90 on two runs, 91 and 67 on two others): treat the table as +-10 points. Compared with the study's estimates (PC instruction counts x 0.347): YM2608 dense 92-104 % -> measured 70-90 %; YM2610 31-91 % -> 64-70 %.
+**ADPCM read cost.** Chip data in PSRAM referenced in place from the file image: the YM2610 with 8.4 MB of ADPCM in the .vgz (read randomly by 6 + 1 voices) cost the same as the 200 KB file (cpu 71 vs 72 on core 0 with the same stream; bench checksums differ only because the data differs), i.e. the PSRAM reads (one segment lookup and one PSRAM byte per ADPCM-A / B sample pair) are below the measurement noise.
+
+**Split over both cores (DAC, `dbg fm plan`): chip -> core, `st` cpu core 0 / core 1, lane ms/s core 0 / core 1**
+
+| file (chips in header order) | plan | cpu | lane |
+|---|---|---|---|
+| YM2151 + SN76489 (SN, OPM) | 12 (SN core 0, OPM core 1) | 22 / 61 | 271 / 732 |
+| | 21 | 70 / 35 | 257 / 759 |
+| YM2151 + OKI6295 (OPM, OKI) | 12 | 71 / 22 | 760 / 91 |
+| YM2612 + YM2151 | 12 | 55 / 63 | 664 / 723 |
+| | 21 | 62 / 63 | 642 / 748 |
+| dual YM2151 typical | 12 / 21 | 59 / 68, 63 / 67 | 760 / 768, 733 / 790 |
+| dual YM2151 dense | 12 / 21 | 61 / 68, 63 / 68 | 797 / 788, 769 / 812 |
+| the same dual YM2151 dense on ONE lane on core 1 (an accident of a bug found while measuring) | | 2 / 89 | 1538 (the producer cannot keep up) |
+Split playback had no underrun and the rings stayed full (low water 15.6-16.4 K of 16.4 K frames). Dual YM2151 (two chips at 70-75 % each) is impossible on one core and plays on the DAC only because of the split; before this stage it was refused on every output.
+
+**The matrix with the static table in force (`dbg fm core auto`): plays / skipped, 12 files**
+
+| file | USB DAC | Bluetooth AAC (JukeDial sink) | Auracast |
+|---|---|---|---|
+| YM2608 typical | plays (core 0, 64 / 6) | plays (66 / 19) | **dies after a few seconds** (underruns 50, ended by the dynamic rule): the static table of this build did not know; base of Auracast on core 0 raised from 19 to 31, which refuses it now |
+| YM2608 dense | plays (90 / 9) | plays, ends by the dynamic rule (starved) | not run |
+| YM2610 | plays (70 / 9) | plays (75 / 25) | plays, no margin (cpu 88 / 53, ring low water 0) |
+| YM2610B | plays (87 / 9) | plays, one starved block (90 / 25) | not run |
+| AY8910 | plays (28 / 9) | plays (36 / 24) | plays (39 / 52) |
+| OKIM6295 | plays (12 / 9) | plays (21 / 26) | plays (27 / 52) |
+| YM2151 + SN76489 | plays, split (23 / 63) | plays, split (80 / 50) | skipped: too heavy for Auracast |
+| YM2151 + OKIM6295 | plays, split (11 / 66) | plays, split (83 / 39) | skipped |
+| YM2612 + YM2151 | plays, split (52 / 65) | plays, split (82 / 85) | skipped |
+| dual YM2151 | plays, split (63 / 67) | skipped: too heavy for Bluetooth AAC | skipped |
+| dual YM2151 dense | plays, split (63 / 68) | skipped | not run |
+| YM2151 + YM2203 | plays, split (44 / 66) | plays, split (72 / 67) | skipped |
+LDAC: not measured (no sink here): the static table adds half a core on core 1 as in stage 1 (ESTIMATE), so every pair of chips is skipped there and a single typical YM2608 / YM2610 would need core 0. Auracast rows are with the table before the change to its core-0 base; with the new base only AY8910 / OKIM6295 files (and the SSG-only ones) pass on core 0. The table decides per file at open; the dynamic rule (400 ms of silence in 4 s) is the second line.
+
+**Memory and large files.** Idle `st` `mem`: 108.0 KB before this stage, 106.3 KB after it (idle, Wi-Fi up; the difference is the new code's static data). A 8.4 MB-ADPCM .vgz (inflated in place into one 8.5 MB PSRAM block): plays; `st` `psram` 16.39 MB idle -> 7.38 MB while it plays (the 8.4 MB file plus the rings) -> 16.19 MB after `stop` (0.2 MB stays: buffers the first session creates and keeps). Side effect to know: those persistent buffers can be placed behind the big block, so after the first big file the largest free PSRAM block was 8.5 MB instead of 15.1 MB, and the 18.9 MB file was then refused with "PSRAM allows 6.5 MB" (13.1 MB on a freshly booted box). A reboot restores the limit (not tried: whether playing a normal file first would); the number to quote is therefore "about 13 MB on a fresh boot". A 18.9 MB one is refused: "18903831 bytes inflated needs 19006288, PSRAM allows 13107200" (the largest free PSRAM block with Wi-Fi up is 13.1 MB after the 2 MB reserve is taken from 15.1 MB). Chip state per file: YM2608 8.1 KB, YM2610 8.1 KB, YM2612 7 KB, dual YM2151 18.9 KB (the arena, internal RAM while it fits), plus a 128 KB int32 ring per lane in PSRAM.

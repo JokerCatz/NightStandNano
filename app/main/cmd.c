@@ -584,6 +584,17 @@ static void h_gapless(o_t *o, char *args)
     say(o, "gapless %s", nsn_player_gapless() ? "on" : "off");
 }
 
+/* partial [on|off]: a chip file that needs a sample chip nobody here plays (Sega PCM, K053260, QSound ...) next to chips that are played plays without it, and one event "partial <file>: missing <chips>"
+ * says so; off = such files are refused. A chip that carries the melody is never left out. Default on, applies from the next file */
+static void h_partial(o_t *o, char *args)
+{
+    if (args && args[0]) {
+        if (!strcmp(args, "on") || !strcmp(args, "off")) { nsn_player_set_partial(args[1] == 'n'); nsn_player_persist(); }
+        else { say(o, "partial on|off"); return; }
+    }
+    say(o, "partial %s", nsn_player_partial() ? "on" : "off");
+}
+
 /* expfmt [on|off]: the AdLib / tracker readers of pc_chipseq's experimental tier (a2m a2t d00 sa2 ...): on by default, applies from the next file */
 static void h_expfmt(o_t *o, char *args)
 {
@@ -930,6 +941,7 @@ static const cmd_t k_cmds[] = {
     { "vol",     h_vol,     false },
     { "vollimit", h_vollimit, false },
     { "gapless", h_gapless, false },
+    { "partial", h_partial, false },
     { "expfmt",  h_expfmt,  false },
     { "dacmax",  h_dacmax,  false },
     { "ratetest", h_ratetest, false },

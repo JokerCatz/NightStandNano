@@ -1,0 +1,23 @@
+The MAME-derived sound cores in components/fmvgm/pcm/emu/cores/ (sn76496.c, okim6295.c, okiadpcm.c, okiadpcm.h) are taken unchanged from libvgm
+(https://github.com/ValleyBell/libvgm, commit c5c03a2c2514d38d2ab7b7e8dbd021af0b8292cb, emu/cores/). Each file's own first lines say:
+
+  sn76496.c      // license:BSD-3-Clause   // copyright-holders:Nicola Salmoria
+  okim6295.c     // license:BSD-3-Clause   // copyright-holders:Mirko Buffoni,Aaron Giles
+  okiadpcm.c/.h  // license:BSD-3-Clause   // copyright-holders:Andrew Gardner,Aaron Giles
+
+The licence is the BSD 3-clause licence as MAME states it (https://github.com/mamedev/mame/blob/master/COPYING and the "license:BSD-3-Clause" tag of the
+same files in MAME's own tree), with the copyright holders named in each file's header:
+
+  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation
+     and/or other materials provided with the distribution.
+  3. Neither the name of the copyright holders nor the names of its contributors may be used to endorse or promote products derived from this software
+     without specific prior written permission.
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDERS OR CONTRIBUTORS BE
+  LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR
+  TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+ymfm_misc.h / ymfm_misc.cpp (the YM2149 / AY8910 class) are part of ymfm: BSD-3-Clause, "Copyright (c) 2021, Aaron Giles", docs/licenses/ymfm-BSD3.txt.

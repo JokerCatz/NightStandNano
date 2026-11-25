@@ -126,26 +126,55 @@ int pc_zip_extract(const pc_reader_t *r, const pc_zip_entry_t *e, uint8_t **out,
     return 0;
 }
 
-int pc_gunzip(const uint8_t *in, uint32_t n, uint8_t **out, uint32_t *len)
+int pc_gunzip(const uint8_t *in, uint32_t n, uint8_t **out, uint32_t *len) { return pc_gunzip_max(in, n, out, len, PC_ZIP_MAX_EXTRACT); }
+
+/* the gzip header's length (0 = not a gzip stream the inflater takes) and the uncompressed size / CRC from the trailer */
+static uint32_t gz_header(const uint8_t *in, uint32_t n, uint32_t *isize, uint32_t *crc)
+{
+    if (!in || n < 18 || in[0] != 0x1f || in[1] != 0x8b || in[2] != 8) return 0;
+    uint8_t fl = in[3];
+    uint32_t p = 10;
+    if (fl & 4) { if (p + 2 > n) return 0; p += 2u + le16(in + p); }
+    if (fl & 8) { while (p < n && in[p]) p++; p++; }
+    if (fl & 16) { while (p < n && in[p]) p++; p++; }
+    if (fl & 2) p += 2;
+    if (p + 8 > n) return 0;
+    *crc = le32(in + n - 8); *isize = le32(in + n - 4);
+    return p;
+}
+
+int pc_gunzip_max(const uint8_t *in, uint32_t n, uint8_t **out, uint32_t *len, uint32_t max_out)
 {
     if (!out || !len) return -EINVAL;
     *out = NULL;
     *len = 0;
-    if (!in || n < 18 || in[0] != 0x1f || in[1] != 0x8b || in[2] != 8) return -EINVAL;
-    uint8_t fl = in[3];
-    uint32_t p = 10;
-    if (fl & 4) { if (p + 2 > n) return -EINVAL; p += 2u + le16(in + p); }
-    if (fl & 8) { while (p < n && in[p]) p++; p++; }
-    if (fl & 16) { while (p < n && in[p]) p++; p++; }
-    if (fl & 2) p += 2;
-    if (p + 8 > n) return -EINVAL;
-    uint32_t crc = le32(in + n - 8), isize = le32(in + n - 4);
-    if (isize > PC_ZIP_MAX_EXTRACT) return -E2BIG;
+    uint32_t crc, isize, p = gz_header(in, n, &isize, &crc);
+    if (!p) return -EINVAL;
+    if (isize > max_out) return -E2BIG;
     uint8_t *dst = malloc(isize + 1u);
     if (!dst) return -ENOMEM;
     long got = pc_inflate_raw(in + p, n - 8 - p, dst, isize);
     if (got != (long)isize || pc_crc32(0, dst, isize) != crc) { free(dst); return -EBADMSG; }
     *out = dst;
+    *len = isize;
+    return 0;
+}
+
+uint32_t pc_gunzip_margin(uint32_t isize) { return 65536u + (isize >> 9); }
+int pc_gunzip_isize(const uint8_t *tail, uint32_t n, uint32_t *isize) { if (!tail || n < 4) return -EINVAL; *isize = le32(tail + n - 4); return 0; }
+
+/* In place: the whole gzip file (n bytes) sits at buf + off, where off = isize + pc_gunzip_margin(isize) - n (the end of the file at the end of the buffer); the data is inflated to buf[0 .. isize). The
+ * write position can only overtake the read position by what a stored block or a header adds (the margin covers it), because the stream never expands. One buffer of isize + margin
+ * instead of the file plus its inflated copy. */
+int pc_gunzip_inplace(uint8_t *buf, uint32_t off, uint32_t n, uint32_t *len)
+{
+    if (!buf || !len) return -EINVAL;
+    *len = 0;
+    uint32_t crc, isize, p = gz_header(buf + off, n, &isize, &crc);
+    if (!p) return -EINVAL;
+    if ((uint64_t)off + n < (uint64_t)isize + pc_gunzip_margin(isize)) return -EINVAL;     /* the file must end at the end of the buffer */
+    long got = pc_inflate_raw(buf + off + p, n - 8 - p, buf, isize);
+    if (got != (long)isize || pc_crc32(0, buf, isize) != crc) return -EBADMSG;
     *len = isize;
     return 0;
 }

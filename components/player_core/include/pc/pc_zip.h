@@ -16,7 +16,13 @@ int  pc_zip_data_offset(const pc_reader_t *r, const pc_zip_entry_t *e, uint32_t 
 #define PC_ZIP_MAX_EXTRACT (4u << 20)
 /* malloc'd copy of the entry; -E2BIG over 4 MB, -EBADMSG corrupt/CRC, -ENOTSUP other methods */
 int  pc_zip_extract(const pc_reader_t *r, const pc_zip_entry_t *e, uint8_t **out, uint32_t *len);
-int  pc_gunzip(const uint8_t *in, uint32_t n, uint8_t **out, uint32_t *len);   /* .vgz */
+int  pc_gunzip(const uint8_t *in, uint32_t n, uint8_t **out, uint32_t *len);   /* .vgz, up to PC_ZIP_MAX_EXTRACT */
+int  pc_gunzip_max(const uint8_t *in, uint32_t n, uint8_t **out, uint32_t *len, uint32_t max_out);   /* the same with the caller's limit on the uncompressed size; -E2BIG above it */
+/* In-place gunzip for large files (Neo Geo VGZ of 10-20 MB): read the gzip file into the END of a buffer of isize + pc_gunzip_margin(isize) bytes, call pc_gunzip_inplace; the result is at
+ * buf[0..len). pc_gunzip_isize reads the uncompressed size from the last 4 bytes of the file (give it those bytes and the file's size). Added after the copy from JukeDial (ORIGIN.md). */
+uint32_t pc_gunzip_margin(uint32_t isize);
+int  pc_gunzip_isize(const uint8_t *tail, uint32_t n, uint32_t *isize);
+int  pc_gunzip_inplace(uint8_t *buf, uint32_t off, uint32_t n, uint32_t *len);
 /* Every function here returns -EINVAL for NULL or inconsistent arguments (entry offsets past the end of the file, impossible counts) and reads nothing past the file or the directory. */
 /* No heap at all (a ~600 B stack buffer): finds names[0..n-1] in one pass over the central directory. out[i].name is
  * names[i] when found, NULL when missing. Returns how many were found, -EINVAL not a zip, -EIO. Names over 255 bytes

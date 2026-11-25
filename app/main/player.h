@@ -28,6 +28,8 @@ int  nsn_player_volume(void);                     /* that output's volume (the e
 void nsn_player_set_vollimit(int n);              /* 0..100: no volume above it is applied or shown */
 int  nsn_player_vollimit(void);
 void nsn_player_set_gapless(bool on);
+void nsn_player_set_partial(bool on);
+bool nsn_player_partial(void);                    /* a VGM that needs a sample chip nobody here plays is played without it (event "partial <file>: missing <chips>"); off = refused. Default on */
 bool nsn_player_gapless(void);                    /* track ends flow into the next track of the playlist when rate and output are the same */
 void nsn_player_set_expfmt(bool on);              /* the experimental tier of tracker / AdLib readers (a2m d00 sa2 ...): on by default, NVS "expfmt" */
 bool nsn_player_expfmt(void);

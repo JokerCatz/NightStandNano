@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 #pragma once
 /* fmvgm: FM-chip music from VGM / VGZ (un-gzipped) and S98 files, on ymfm (BSD-3-Clause, see ymfm/LICENSE and SOURCE.md).
- * Stage 1 plays YM2151 (OPM) and YM2203 (OPN + SSG), single or dual chip. A pc_backend_t (player_core's decoder interface), no other dependency:
+ * Plays YM2151, YM2203, YM2608, YM2610 / B, YM2612 / YM3438, AY8910 / YM2149, SN76489 and OKIM6295, one or two of each, from the chips' VGM / S98 streams, with the ADPCM / ROM data
+ * the format carries. Chips may be spread over both cores of the host (lanes, below). A pc_backend_t (player_core's decoder interface), no other dependency:
  * the only outside services (memory, a second-core worker thread, a clock) come through fmvgm_port_t, which the firmware fills in once.
  *
  * What the backend does: opens a whole file from memory (pc_reader_t.mem, kept until close), runs the chips (integer, bit-exact with ymfm everywhere) on a producer, resamples the
@@ -35,7 +36,11 @@ void fmvgm_set_port(const fmvgm_port_t *port);           /* before the first ope
 
 /* ---- placement and tuning (any task, effective for the next render / open as noted) ---------------------------------------------------------------------------------- */
 enum { FMVGM_PLACE_INLINE = 0, FMVGM_PLACE_CORE0 = 1, FMVGM_PLACE_CORE1 = 2 };
-void fmvgm_set_placement(int place);                     /* live: an open session migrates at its next render() */
+void fmvgm_set_placement(int place);                     /* every chip of the next open; a single-lane session also migrates at its next render() when this changes */
+/* Split rendering: chips that share a placement form one lane (a worker thread on that core, or the consumer inline), each with its own cursor in the command stream and its own ring; render()
+ * mixes the lanes. The plan gives the placement of each chip of the next open(s), in the order of fmvgm_info_t.chip[] (header order, a dual chip counts twice); n = 0 clears it and every chip
+ * follows fmvgm_set_placement. The output does not depend on the plan: every chip is resampled on its own and the lanes are summed in integers (host test: bit-identical for every plan). */
+void fmvgm_set_plan(const uint8_t *place_of_chip, int n);
 int  fmvgm_placement(void);
 void fmvgm_set_worker_priority(int prio);                /* live; default 12 (measured, docs/design.md): above the USB host and housekeeping tasks, below lwIP, the cast task and the Wi-Fi / Bluetooth stacks */
 void fmvgm_set_out_rate(uint32_t hz);                    /* the rate render() delivers (what rate() reports) for the next open; 0 = the chip's native rate, no resampling */
@@ -47,6 +52,14 @@ void fmvgm_set_overload(uint32_t window_ms, uint32_t thr_ms);   /* render() repo
 void fmvgm_get_overload(uint32_t *window_ms, uint32_t *thr_ms);   /* the same numbers, for a host that applies the rule to something else too (an output ring that keeps running dry under an inline producer) */
 #define FMVGM_FADE_MS 8000
 #define FMVGM_E_OVERLOAD (-2)                            /* render(): the producer cannot keep up (see fmvgm_set_overload) */
+
+/* Partial playback: chips the file writes that nobody here plays (sample chips) are left out when their PC_VGM_BIT is in this mask, instead of refusing the file (open then reports them in
+ * fmvgm_info_t.dropped_names). The host decides which chips may be dropped (a melodic chip may not). 0 = refuse every unplayable chip. */
+void fmvgm_set_drop(uint64_t chips);
+uint64_t fmvgm_played_chips(void);                       /* PC_VGM_BIT mask of the chips this backend plays */
+/* Optional ROM images the chips cannot get from the file. The memory must stay valid while any file is open (it is referenced, not copied). */
+enum { FMVGM_ROM_YM2608_RHYTHM = 1 };                    /* the 8 KB ADPCM-A image of the YM2608's rhythm section, in the layout of ymfm's ym2608_adpcm_rom.bin; without it the rhythm channels stay silent */
+void fmvgm_set_rom(int which, const void *data, uint32_t n);   /* n = 0 removes it */
 
 /* ---- looking at a file before opening it (any task; whole un-gzipped file in memory) ---------------------------------------------------------------------------------------- */
 /* Routing of a .vgm / .vgz: 0 = fmvgm plays every chip the file writes; 1 = only GME's chips (SN76489 YM2413 YM2612: GME's job); 2 = both kinds in one file (fmvgm cannot play
@@ -64,7 +77,7 @@ void fmvgm_tags(void *h, fmvgm_tags_t *t);
 typedef struct {
     int      format;                 /* 0 VGM, 1 S98 */
     int      n_chips;
-    struct { char name[8]; uint32_t clock; uint32_t native_rate; } chip[4];   /* native_rate: what the chip delivers to the filter (YM2203: clock / 72) */
+    struct { char name[10]; uint8_t type; uint8_t place; uint32_t clock; uint32_t native_rate; } chip[4];   /* native_rate: what the chip delivers to the filter (YM2203: clock / 72); place: FMVGM_PLACE_* of its lane (open handle) */
     uint32_t out_rate;               /* what render() delivers */
     int      loops;                  /* the file has a loop */
     int32_t  length_ms;              /* intro + loop count * loop, or the whole song; -1 unknown (180 s is then assumed by the player) */
@@ -72,11 +85,16 @@ typedef struct {
     int      taps;                   /* 0 = no resampling */
     int      placement;              /* FMVGM_PLACE_* in force for this handle */
     uint32_t chip_bytes, chip_bytes_cap; int chip_spill;   /* the chips' arena: used / reserved, and allocations that did not fit it (must be 0) */
+    int      lanes;                  /* rendering lanes of this handle (1 = all chips on one core) */
+    uint32_t adpcm_bytes;            /* ADPCM / ROM data the file carries (probe) */
+    int      rom_missing;            /* a YM2608 is used and its rhythm ROM was not supplied: the rhythm channels are silent */
+    uint64_t dropped; char dropped_names[40];   /* chips left out under fmvgm_set_drop */
 } fmvgm_info_t;
 void fmvgm_info(void *h, fmvgm_info_t *i);
 /* The same facts from the file alone, without building a handle (no chips, no memory beyond the stack): 0, or -1 with fmvgm_error() set. For routing and budget checks. out_rate / taps / placement
  * in `i` are what an open now would use. */
 int  fmvgm_probe(const void *mem, uint32_t size, fmvgm_info_t *i, fmvgm_tags_t *t);
+int  fmvgm_probe_drop(const void *mem, uint32_t size, fmvgm_info_t *i, fmvgm_tags_t *t, uint64_t drop);   /* with an explicit drop mask (a task other than the one that opens must not touch the global one) */
 
 /* statistics of the open handle (h) or, when h is NULL, a snapshot of the newest handle refreshed about every 250 ms while it renders and when it closes (safe to read from any task); counters since open / the last restart */
 typedef struct {
@@ -88,7 +106,8 @@ typedef struct {
     uint32_t full_waits;             /* producer found the ring full (it is ahead: good) */
     uint32_t low_water;              /* lowest ring fill seen at the start of a render(), frames */
     uint32_t ring_frames;            /* ring capacity */
-    uint32_t busy_us;                /* microseconds the producer spent making frames (wall time, a preempted producer counts that too) */
+    uint32_t busy_us;                /* microseconds the producers spent making frames, all lanes (wall time, a preempted producer counts that too) */
+    int      lanes; uint32_t lane_busy_us[3]; int lane_place[3];   /* the same per lane (placement -1: no such lane) */
     uint32_t made_ms;                /* audio milliseconds made (for busy_us / made_ms = cost per audio second, in thousandths) */
     uint32_t migrations;
     int      overloaded;

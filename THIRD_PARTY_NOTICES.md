@@ -25,7 +25,7 @@ and where the licence text is. It states what the files say; it is not legal adv
 | libadplug | AdPlug and libbinio (OPL players) | LGPL-2.1-or-later |
 | emu2413 | YM2413 emulator (fork) | MIT |
 | gme | Game_Music_Emu 0.6.5 with patches | LGPL-2.1-or-later |
-| fmvgm | FM-chip player (own code, LGPL-2.1-or-later) around ymfm (`ymfm/`, commit 81aec25, three local patches in `patches/`) | ymfm: BSD-3-Clause |
+| fmvgm | FM-chip player (own code, LGPL-2.1-or-later) around ymfm (`ymfm/`, commit 81aec25, three local patches in `patches/`; `ymfm_misc` = the AY8910 / YM2149 class), and two MAME-derived cores from libvgm (commit c5c03a2: `pcm/emu/cores/sn76496.c`, `okim6295.c`, `okiadpcm.[ch]`, unchanged, headers say `license:BSD-3-Clause`) behind own adapters and a compatibility layer (`pcm/`) | ymfm: BSD-3-Clause; MAME cores: BSD-3-Clause |
 <!-- release-notes:end -->
 
 Where the texts are:
@@ -47,7 +47,7 @@ Where the texts are:
 | libadplug | `docs/licenses/adplug-LGPL-2.1.txt`, `docs/licenses/libbinio-LGPL-2.1.txt`, file headers |
 | emu2413 | `components/emu2413/LICENSE`, `docs/licenses/emu2413-MIT.txt` |
 | gme | `components/gme/license.txt` (LGPL-2.1), `components/gme/license.gpl2.txt`, `readme.txt` |
-| fmvgm (own code) / ymfm | `LICENSE`, per-file SPDX headers / `docs/licenses/ymfm-BSD3.txt`, `components/fmvgm/ymfm/LICENSE` |
+| fmvgm (own code) / ymfm / MAME cores | `LICENSE`, per-file SPDX headers / `docs/licenses/ymfm-BSD3.txt`, `components/fmvgm/ymfm/LICENSE` / `docs/licenses/mame-sound-cores-BSD3.txt` |
 
 Points that the component notes themselves raise:
 
