@@ -37,6 +37,7 @@
 #include "ratetest.h"
 #include "trim.h"
 #include "hw.h"
+#include "fmglue.h"
 #include "sink.h"
 #include "esp_app_desc.h"
 
@@ -321,7 +322,7 @@ static void h_play(o_t *o, char *args)
     nsn_settings_save();
     char why[40];
     esp_err_t e = nsn_player_play_why(args, why, sizeof why);
-    if (e == ESP_ERR_NOT_SUPPORTED && why[0]) say(o, "play: ESP_ERR_NOT_SUPPORTED unsupported chip %s", why);   /* the page reads the first word as the error name and shows the text it knows for it */
+    if (e == ESP_ERR_NOT_SUPPORTED && why[0]) say(o, "play: ESP_ERR_NOT_SUPPORTED %s", why);   /* the page reads the first word as the error name and shows the text it knows for it */
     else say(o, "play: %s", esp_err_to_name(e));
 }
 
@@ -645,7 +646,7 @@ static void oc_line(void *ctx, const char *s) { say((o_t *)ctx, "%s", s); }
  *   dbg scene NAME|file.ogg:vol|...   adds a test scene (RAM only, until reboot) after those of scenes.txt */
 static void h_dbg(o_t *o, char *args)
 {
-    if (!args) { say(o, "dbg oc|vol|ramp|looplen|scene|trim"); return; }
+    if (!args) { say(o, "dbg oc|vol|ramp|looplen|scene|trim|fm"); return; }
     char b[240];
     if (!strcmp(args, "oc arm")) { nsn_oc_arm(true); say(o, "oc armed"); }
     else if (!strcmp(args, "oc off")) { nsn_oc_arm(false); say(o, "oc off"); }
@@ -665,9 +666,10 @@ static void h_dbg(o_t *o, char *args)
     else if (!strncmp(args, "xfade ", 6)) { nsn_scene_debug_xfade(atoi(args + 6)); say(o, "scene xfade %d ms", atoi(args + 6)); }
     else if (!strcmp(args, "ramp")) { nsn_player_ramp_dump(b, sizeof b); say(o, "%s", b); }
     else if (!strncmp(args, "looplen ", 8)) { nsn_scene_debug_looplen(atoi(args + 8)); say(o, "looplen %d ms", atoi(args + 8)); }
+    else if (!strncmp(args, "fm", 2) && (args[2] == 0 || args[2] == ' ')) nsn_fm_dbg(args + 2, oc_line, o);
     else if (!strcmp(args, "spare 0") || !strcmp(args, "spare 1")) { nsn_scene_debug_spare(args[6] == '1'); say(o, "scene loop: %s", args[6] == '1' ? "spare decoder" : "rewind"); }
     else if (!strncmp(args, "scene ", 6)) { nsn_scene_debug_add(args + 6); say(o, "scenes: %d", nsn_scene_load()); }
-    else say(o, "dbg oc arm|off|show | vol [forget bt|cast] | ramp | looplen MS | scene NAME|file:vol");
+    else say(o, "dbg oc arm|off|show | vol [forget bt|cast] | ramp | looplen MS | scene NAME|file:vol | fm ...");
 }
 
 static void h_spec(o_t *o, char *args)

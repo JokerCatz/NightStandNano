@@ -1,0 +1,38 @@
+--- a/ymfm/ymfm.h	2026-11-25 20:57:07.958602922 +0800
++++ b/ymfm/ymfm.h	2026-11-25 20:57:08.036715376 +0800
+@@ -50,6 +50,11 @@
+ namespace ymfm
+ {
+ 
++// FMVGM PATCH 1: allocation hook for the per-operator / per-channel objects (defined by the host; never called after construction)
++void *ymfm_alloc(size_t n);
++void ymfm_free(void *p);
++
++
+ //*********************************************************
+ //  DEBUGGING
+ //*********************************************************
+--- a/ymfm/ymfm_fm.h	2026-11-25 20:57:07.965456036 +0800
++++ b/ymfm/ymfm_fm.h	2026-11-25 20:57:08.037088627 +0800
+@@ -171,6 +171,10 @@
+ 	// constructor
+ 	fm_operator(fm_engine_base<RegisterType> &owner, uint32_t opoffs);
+ 
++	// FMVGM PATCH 1: objects come from the host's allocator hook (see SOURCE.md)
++	static void *operator new(size_t n) { return ymfm_alloc(n); }
++	static void operator delete(void *p) { ymfm_free(p); }
++
+ 	// save/restore
+ 	void save_restore(ymfm_saved_state &state);
+ 
+@@ -255,6 +259,10 @@
+ 	// constructor
+ 	fm_channel(fm_engine_base<RegisterType> &owner, uint32_t choffs);
+ 
++	// FMVGM PATCH 1: objects come from the host's allocator hook (see SOURCE.md)
++	static void *operator new(size_t n) { return ymfm_alloc(n); }
++	static void operator delete(void *p) { ymfm_free(p); }
++
+ 	// save/restore
+ 	void save_restore(ymfm_saved_state &state);
+ 

@@ -16,7 +16,7 @@ if(NOT NSN_BT_RC EQUAL 0 OR NOT EXISTS ${NSN_BT_LDAC}/bt/CMakeLists.txt)
     message(FATAL_ERROR "tools/bt_ldac/make_bt.sh failed (${NSN_BT_RC}):\n${NSN_BT_OUT}${NSN_BT_ERR}")
 endif()
 list(APPEND EXTRA_COMPONENT_DIRS ${NSN_BT_LDAC})        # a project component named bt replaces IDF's
-foreach(c player_core libldac libxmp libmpcdec libtta libhvl libcrsid libadplug emu2413 gme)
+foreach(c player_core libldac libxmp libmpcdec libtta libhvl libcrsid libadplug emu2413 gme fmvgm)
     list(APPEND EXTRA_COMPONENT_DIRS ${CMAKE_CURRENT_LIST_DIR}/../components/${c})
 endforeach()
 get_filename_component(NSN_ROOT ${CMAKE_CURRENT_LIST_DIR}/.. ABSOLUTE)

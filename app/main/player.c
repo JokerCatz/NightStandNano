@@ -38,6 +38,8 @@
 #include "outcheck.h"
 #include "zipfs.h"
 #include "vgmgate.h"
+#include "fmvgm.h"
+#include "fmglue.h"
 #include "chiptags.h"
 #include "events.h"
 #include "trim.h"
@@ -157,6 +159,7 @@ static const pc_backend_t *backend_for(const char *path)
     if (!strncmp(path, "noise:", 6)) return noise_color(path) >= 0 ? &noise_backend : NULL;
     const char *e = strrchr(path, '.');
     if (!e) return NULL;
+    if (!strcasecmp(e, ".s98")) return &pc_backend_fmvgm;               /* FM chips (YM2203, YM2151) from S98 dumps: components/fmvgm */
     if (!strcasecmp(e, ".ym")) return &pc_backend_ym;
     if (!strcasecmp(e, ".p8")) return &pc_backend_p8;
     if (pc_opl_ext(e) || pc_xmp_ext(e)) return &pc_backend_chain;      /* tracker modules and DOS AdLib music: libxmp / AdPlug, in the order pc_chipseq.c says */
@@ -386,6 +389,11 @@ static void chip_tags_apply(const trk_t *t, const char *path)
         nsn_tag_clean(s_tag_title, sizeof s_tag_title, song[0] ? song : gm, sizeof song);
         nsn_tag_clean(s_tag_artist, sizeof s_tag_artist, au, sizeof au);
         nsn_tag_clean(s_tag_album, sizeof s_tag_album, song[0] ? gm : "", sizeof gm);
+    } else if (t->be == &pc_backend_fmvgm) {
+        fmvgm_tags_t ft; fmvgm_tags(t->h, &ft);                     /* GD3 / S98 tags: title (else the game) as title, author, game as album */
+        nsn_tag_clean(s_tag_title, sizeof s_tag_title, ft.title[0] ? ft.title : ft.game, sizeof ft.title);
+        nsn_tag_clean(s_tag_artist, sizeof s_tag_artist, ft.author, sizeof ft.author);
+        nsn_tag_clean(s_tag_album, sizeof s_tag_album, ft.title[0] ? ft.game : "", sizeof ft.game);
     } else if (!(t->be == &btin_backend || t->be == &noise_backend || t->be == &nsn_scene_backend) && !s_tag_title[0] && !s_tag_artist[0]) {
         const char *e = strrchr(path, '.');
         nsn_chip_tags(&t->r, e, s_tag_title, sizeof s_tag_title, s_tag_artist, sizeof s_tag_artist, s_tag_album, sizeof s_tag_album);
@@ -395,6 +403,7 @@ static void chip_tags_apply(const trk_t *t, const char *path)
 /* A chip file, or a zip entry, whole in PSRAM. A VGM that is gzip'd is un-gzipped whatever its extension says (.vgm that is a .vgz and the other way round are
  * common); one that is not gzip'd is used as it is. 0 ok, -1 not (the reason is logged). */
 static bool is_vgm_ext(const char *path) { const char *e = strrchr(path, '.'); return e && (!strcasecmp(e, ".vgm") || !strcasecmp(e, ".vgz")); }
+static bool is_s98_ext(const char *path) { const char *e = strrchr(path, '.'); return e && !strcasecmp(e, ".s98"); }
 static int load_chip_file(const char *path, bool zip, const char *zpath, const char *inner, uint8_t **memp, uint32_t *lenp)
 {
     uint8_t *mem = NULL; uint32_t len = 0;
@@ -420,17 +429,27 @@ static int load_chip_file(const char *path, bool zip, const char *zpath, const c
     return 0;
 }
 
-/* "skip <file>: chip YM2151" for the events list (56 characters at most): the file name is cut to fit, the chip names come first */
-static void vgm_refused(const char *path, const char *why)
+/* "skip <file>: chip YM2151" / "skip <file>: too heavy for Bluetooth AAC" for the events list (56 characters at most): the file name is cut to fit, the reason comes first */
+static void skip_event(const char *path, const char *what)
 {
     const char *base = strrchr(path, '/'); base = base ? base + 1 : path;
-    char b[64]; int room = 55 - (int)strlen("skip : chip ") - (int)strlen(why);
+    char b[64]; int room = 55 - (int)strlen("skip : ") - (int)strlen(what);
     if (room < 8) room = 8;
     int n = (int)strlen(base);
     if (n > room) { n = room - 2; while (n > 0 && ((unsigned char)base[n] & 0xC0) == 0x80) n--; snprintf(b, sizeof b, "%.*s..", n > 58 ? 58 : n, base); }
     else snprintf(b, sizeof b, "%.60s", base);
-    ESP_LOGW(TAG, "skip %s: chip %s", path, why);
-    nsn_event("skip %s: chip %s", b, why);
+    ESP_LOGW(TAG, "skip %s: %s", path, what);
+    nsn_event("skip %s: %s", b, what);
+}
+static void vgm_refused(const char *path, const char *why) { char w[64]; snprintf(w, sizeof w, "chip %s", why); skip_event(path, w); }
+
+static int64_t s_fmo_start, s_fmo_last, s_fmo_win0; static uint32_t s_fmo_low_us;   /* FM overload watch over the output ring (play_one): when the sink started, last look, window start, microseconds the ring was nearly empty in the window */
+static int pick_sink(void);
+/* The name of an output for "too heavy for ...": Bluetooth says its codec */
+static void sink_label(int sink, char *out, size_t n)
+{
+    if (sink == 2) { const char *c = nsn_bt_codec_name(); snprintf(out, n, "Bluetooth%s%s", c && c[0] ? " " : "", c ? c : ""); }
+    else { const nsn_sink_t *k = nsn_sink_get(sink); snprintf(out, n, "%s", k ? k->desc : "output"); }
 }
 
 static int open_track(const char *path, trk_t *t)
@@ -461,12 +480,23 @@ static int open_track(const char *path, trk_t *t)
         r->u = (void *)(intptr_t)noise_color(path);
         s_noise_frames = 0; s_fmt = "Noise";
         if (be->open(&h, r, 0) != 0) return -1;
-    } else if (be == &backend_gme || be == &pc_backend_chain || be == &pc_backend_ym || be == &pc_backend_p8) {
+    } else if (be == &backend_gme || be == &pc_backend_chain || be == &pc_backend_ym || be == &pc_backend_p8 || be == &pc_backend_fmvgm) {
         uint8_t *mem = NULL; uint32_t len = 0;
         if (load_chip_file(path, zip, zpath, inner, &mem, &len) != 0) return -1;
-        if (be == &backend_gme && is_vgm_ext(path)) {
+        if (be == &backend_gme && is_vgm_ext(path)) {                  /* GME for the chips it plays, fmvgm for the FM chips it lacks, a refusal for the rest */
             char why[40];
-            if (nsn_vgm_gate(mem, len, why, sizeof why) != 0) { heap_caps_free(mem); vgm_refused(path, why); return -1; }
+            int rt = nsn_vgm_route(mem, len, why, sizeof why);
+            if (rt < 0) { heap_caps_free(mem); vgm_refused(path, why); return -1; }
+            if (rt == NSN_VGM_FM) be = &pc_backend_fmvgm;
+        }
+        if (be == &pc_backend_fmvgm) {
+            int sk = pick_sink();
+            fmvgm_info_t pi;
+            if (sk && fmvgm_probe(mem, len, &pi, NULL) == 0) {              /* known too heavy for this output? (fmglue.c): skip it before anything is built; it plays on a lighter one */
+                char w[40], what[64];
+                if (nsn_fm_check(&pi, sk, sk == 2 ? nsn_bt_codec_name() : "", w, sizeof w) != 0) { heap_caps_free(mem); snprintf(what, sizeof what, "too heavy for %s", w); skip_event(path, what); nsn_fm_note_skip(false); return -1; }
+            }
+            fmvgm_set_out_rate(nsn_fm_out_rate(sk ? sk : nsn_sink_auto()));
         }
         t->mem = mem;
         pc_reader_mem(r, mem, len);
@@ -475,7 +505,7 @@ static int open_track(const char *path, trk_t *t)
         s_start_off = 0;
         t->card = true;
         if (be->open(&h, r, 0) != 0) {
-            const char *why = be == &backend_gme ? backend_gme_error() : "";
+            const char *why = be == &backend_gme ? backend_gme_error() : be == &pc_backend_fmvgm ? fmvgm_error() : "";
             ESP_LOGE(TAG, "decoder open failed: %s%s%s", path, why[0] ? ": " : "", why);
             if (why[0]) { const char *b = strrchr(path, '/'); char w[40]; snprintf(w, sizeof w, "%s", why); char *x = strstr(w, " for this emulator"); if (x) *x = 0; nsn_event("skip %.24s: %.26s", b ? b + 1 : path, w); }
             close_track(t); return -1;
@@ -578,7 +608,7 @@ static bool bm_token(const trk_t *t, int sub, uint32_t *tok)
 {
     if (!t->h || !t->card) return false;
     if (t->be == &backend_gme) { *tok = (uint32_t)sub; return true; }
-    if (t->be == &pc_backend_chain || t->be == &pc_backend_ym || t->be == &pc_backend_p8) { *tok = 0; return true; }
+    if (t->be == &pc_backend_chain || t->be == &pc_backend_ym || t->be == &pc_backend_p8 || t->be == &pc_backend_fmvgm) { *tok = 0; return true; }
     if (t->be->byte_pos) { *tok = t->be->byte_pos(t->h); return true; }
     if (t->be->start_track) { *tok = (uint32_t)sub; return true; }
     return false;
@@ -651,6 +681,7 @@ static int play_one(void)
     sub = t.sub0 < subn ? t.sub0 : 0;
     s_sub = sub + 1; s_subn = subn;
     bool live = t.be == &btin_backend;
+    s_fmo_start = 0;
     while (!s_stop) {
         if (s_skip && subn > 1 && sub + s_skip >= 0 && sub + s_skip < subn) {          /* next / previous tune inside the file */
             sub += s_skip; s_skip = 0; s_sub = sub + 1; s_gap = true;      /* the ring is emptied below: the refill is not an underrun */
@@ -666,9 +697,15 @@ static int play_one(void)
         bool over; float fade = sleep_fade(&over);
         if (over) { res = 2; break; }
         int n = t.be->render(t.h, fl, BLOCK);
+        if (n == FMVGM_E_OVERLOAD && t.be == &pc_backend_fmvgm) {  /* the chips cannot be produced in time (the effects had their chance to step aside meanwhile): stop this file, go on with the next */
+            char w[40], what[64];
+            sink_label(sink, w, sizeof w); snprintf(what, sizeof what, "too heavy for %s", w); skip_event(s_path, what); nsn_fm_note_skip(true);
+            s_gap = true; res = -1; break;
+        }
         if (n <= 0) {
             if (subn > 1 && sub + 1 < subn && t.be->start_track(t.h, ++sub) == 0) { s_sub = sub + 1; s_len_ms = t.be->length_ms ? t.be->length_ms(t.h) : -1; chip_tags_apply(&t, s_path); continue; }   /* next tune of the same file */
             if (try_chain(&t, sink)) {                                                  /* the next track carries on in the same session */
+                s_fmo_start = 0;
                 subn = (t.be->track_count && t.be->start_track) ? t.be->track_count(t.h) : 1;
                 if (subn < 1) subn = 1;
                 sub = t.sub0 < subn ? t.sub0 : 0; s_sub = sub + 1; s_subn = subn; chip_tags_apply(&t, s_path);
@@ -691,6 +728,25 @@ static int play_one(void)
         }
         s_pos_ms = t.be->position_ms ? t.be->position_ms(t.h) : 0;
         if (!s_sink && xRingbufferGetCurFreeSize(s_ring) < (live ? RING_BYTES - 8192 : RING_BYTES / 2)) start_sink(sink, link);
+        if (t.be == &pc_backend_fmvgm && s_sink) {                 /* an inline producer cannot insert silence: it runs late and the output ring runs dry. Same rule, same numbers as the worker's (fmvgm_set_overload), in wall-clock time */
+            int64_t now = esp_timer_get_time();
+            if (!s_fmo_start) { s_fmo_start = s_fmo_last = now; s_fmo_low_us = 0; s_fmo_win0 = 0; }
+            int64_t dt = now - s_fmo_last; s_fmo_last = now;
+            if (now - s_fmo_start > 2500000) {                        /* 2.5 s of grace: the fx shedding (2 s at 90 %) and the ring's own prefill come first */
+                if (!s_fmo_win0) s_fmo_win0 = now;
+                if (RING_BYTES - xRingbufferGetCurFreeSize(s_ring) < RING_BYTES / 8) s_fmo_low_us += (uint32_t)(dt > 200000 ? 200000 : dt);
+                uint32_t win, thr; fmvgm_get_overload(&win, &thr);
+                if (now - s_fmo_win0 >= (int64_t)win * 1000) {
+                    bool over = thr && s_fmo_low_us / 1000 > thr;
+                    s_fmo_win0 = now; s_fmo_low_us = 0;
+                    if (over) {
+                        char w[40], what[64];
+                        sink_label(sink, w, sizeof w); snprintf(what, sizeof what, "too heavy for %s", w); skip_event(s_path, what); nsn_fm_note_skip(true);
+                        s_gap = true; res = -1; break;
+                    }
+                }
+            }
+        }
     }
     if (!s_sink && !s_stop && res != 1) start_sink(sink, link);  /* a clip shorter than half the ring */
 out:
@@ -786,7 +842,7 @@ static bool zlist_add(void *ctx, const char *entry)
 static bool playable_name(const char *name) { return backend_for(name) != NULL; }
 bool nsn_player_can_play(const char *name) { return playable_name(name); }
 
-/* The refusal answer for `play <one VGM>` has to come before the reply, so the file is looked at in the command task's context. Un-gzipping needs far more stack
+/* The refusal answer for `play <one VGM or S98>` has to come before the reply, so the file is looked at in the command task's context. Un-gzipping needs far more stack
  * than the console / BLE tasks have (a Stack protection fault was the proof), so the look is done by a small worker with its stack in PSRAM, like the decode task. */
 typedef struct { const char *path; char *why; size_t n; bool refused; } gate_job_t;
 static TaskHandle_t s_gate_task; static SemaphoreHandle_t s_gate_done; static gate_job_t *s_gate_job;
@@ -799,13 +855,28 @@ static void gate_task(void *arg)
         bool z = nsn_zip_split(j->path, zp, sizeof zp, &in);
         j->refused = false;
         if (load_chip_file(j->path, z, zp, in, &mem, &len) == 0) {
-            j->refused = nsn_vgm_gate(mem, len, j->why, j->n) != 0;
+            bool fm = false;
+            if (is_vgm_ext(j->path)) {
+                char chips[40];
+                int rt = nsn_vgm_route(mem, len, chips, sizeof chips);
+                if (rt < 0) { j->refused = true; snprintf(j->why, j->n, "unsupported chip %s", chips); }
+                else fm = rt == NSN_VGM_FM;
+            } else fm = true;                                       /* .s98 */
+            fmvgm_info_t fi;
+            if (fm && !j->refused) {
+                if (fmvgm_probe(mem, len, &fi, NULL) != 0) { j->refused = true; snprintf(j->why, j->n, "unsupported %s", fmvgm_error()); }
+                else {
+                    int sk = pick_sink();
+                    char w[40];
+                    if (sk && nsn_fm_check(&fi, sk, sk == 2 ? nsn_bt_codec_name() : "", w, sizeof w) != 0) { j->refused = true; snprintf(j->why, j->n, "too heavy for %s", w); }
+                }
+            }
             heap_caps_free(mem);
         }
         xSemaphoreGive(s_gate_done);
     }
 }
-static bool vgm_precheck(const char *path, char *why, size_t n)       /* true: refused (why = the chips); under the api lock */
+static bool vgm_precheck(const char *path, char *why, size_t n)       /* true: refused (why = the text after "play: ESP_ERR_NOT_SUPPORTED "); under the api lock */
 {
     if (!s_gate_task) {
         s_gate_done = xSemaphoreCreateBinary();
@@ -820,14 +891,14 @@ static bool vgm_precheck(const char *path, char *why, size_t n)       /* true: r
 }
 
 /* why a single VGM the user asked for is refused (nsn_player_play_why), "" when it is not (or cannot be looked at: the normal path then says what is wrong) */
-static char s_refuse[40];
+static char s_refuse[64];
 
 static esp_err_t start_u(const char *path, const char *pick, uint32_t off)
 {
     if (nsn_ratetest_running()) { ESP_LOGE(TAG, "the DAC rate test is running"); return ESP_ERR_INVALID_STATE; }
     s_refuse[0] = 0;
-    if (!pick && path[0] == '/' && is_vgm_ext(path) && !is_dir(path) && vgm_precheck(path, s_refuse, sizeof s_refuse)) {    /* one VGM: answer now, and leave what plays alone */
-        vgm_refused(path, s_refuse);
+    if (!pick && path[0] == '/' && (is_vgm_ext(path) || is_s98_ext(path)) && !is_dir(path) && vgm_precheck(path, s_refuse, sizeof s_refuse)) {    /* one VGM / S98: answer now, and leave what plays alone */
+        skip_event(path, !strncmp(s_refuse, "unsupported ", 12) ? s_refuse + 12 : s_refuse);
         return ESP_ERR_NOT_SUPPORTED;
     }
     nsn_player_stop();
@@ -1010,6 +1081,7 @@ void nsn_player_init_settings(void)
         nsn_sink_register(&k_sink_dac); nsn_sink_register(&k_sink_bt); nsn_sink_register(&k_sink_cast);
         board_sinks_register();
     }
+    nsn_fm_init();
     s_gapless = nsn_settings_get_i32("gapless", 1) != 0;
     s_expfmt = nsn_settings_get_i32("expfmt", 1) != 0;
     pc_tier_set_source(expfmt_src);

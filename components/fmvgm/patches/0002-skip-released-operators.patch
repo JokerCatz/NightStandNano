@@ -1,0 +1,14 @@
+--- a/ymfm/ymfm_fm.ipp	2026-11-25 20:57:07.972907542 +0800
++++ b/ymfm/ymfm_fm.ipp	2026-11-25 20:57:08.037803727 +0800
+@@ -445,6 +445,11 @@
+ template<class RegisterType>
+ void fm_operator<RegisterType>::clock(uint32_t env_counter, int32_t lfo_raw_pm)
+ {
++	// FMVGM PATCH 2: a released operator that has reached full attenuation (and has no SSG-EG state) changes nothing here until its next key-on, which
++	// resets the phase (start_attack) and starts from the same attenuation: skip all of its work. Output is identical (see SOURCE.md).
++	if (m_env_state == EG_RELEASE && m_env_attenuation >= 0x3ff && !m_ssg_inverted && !m_regs.op_ssg_eg_enable(m_opoffs))
++		return;
++
+ 	// clock the SSG-EG state (OPN/OPNA)
+ 	if (m_regs.op_ssg_eg_enable(m_opoffs))
+ 		clock_ssg_eg_state();

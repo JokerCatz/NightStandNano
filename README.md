@@ -41,7 +41,7 @@ never run on real hardware (listed under "還沒實測過" below).
 
 **來源**
 - TF 卡（FAT32、exFAT）：mp3 flac wav aiff m4a aac ogg opus mpc tta adx vag brstm，整個資料夾連續播放，`.zip` 當資料夾。
-- 晶片音樂：GME（nsf nsfe gbs gym hes kss sap spc ay vgm vgz）、tracker（libxmp：mod xm s3m it 等）、AdLib（AdPlug：rad hsc d00 a2m amd sa2 等）、sid、ym、ahx／hvl、PICO-8。2026-11-25 逐格式用真檔實測過 nsf（含 VRC6 / VRC7 / N163 / MMC5 / FDS / 5B）gbs hes kss sap sid ay ym ahx hvl vgz mod xm s3m it rad hsc d00 a2m amd sa2 與 zip 內的檔（表在 `docs/requirements.md` 文末）。VGM 若含 GME 不會播的晶片（YM2151、YM2203 …）會被拒絕並說出晶片名，不再無聲地播。
+- 晶片音樂：GME（nsf nsfe gbs gym hes kss sap spc ay vgm vgz）、FM 晶片（ymfm，`components/fmvgm`：YM2151 與 YM2203 的 vgm／vgz，單或雙晶片，與 s98 v0–v3 的 YM2203／YM2151 裝置；一個 VGM 由標頭決定交給 GME 或 FM 後端，兩者的晶片混在同一檔、或含任何一邊都不會播的晶片就拒絕並說出晶片名；晶片合成可放在核心 0 的工作者，太重的組合在該輸出下會被跳過並寫下原因，換輕的輸出就能播。**沒有真的 YM2151／YM2203 曲子可測，只有合成的暫存器流：音色與音高正不正確沒驗過，只驗了與 ymfm 在 PC 上逐位元相同、以及時間／CPU**）、tracker（libxmp：mod xm s3m it 等）、AdLib（AdPlug：rad hsc d00 a2m amd sa2 等）、sid、ym、ahx／hvl、PICO-8。2026-11-25 逐格式用真檔實測過 nsf（含 VRC6 / VRC7 / N163 / MMC5 / FDS / 5B）gbs hes kss sap sid ay ym ahx hvl vgz mod xm s3m it rad hsc d00 a2m amd sa2 與 zip 內的檔（表在 `docs/requirements.md` 文末）。VGM 若含 GME 不會播的晶片（YM2151、YM2203 …）會被拒絕並說出晶片名，不再無聲地播。
 - 網路電台：http／https，MP3／AAC／Ogg，ICY 歌名，`.pls`／`.m3u`，HLS（`.m3u8`：TS／AAC 與 packed AAC／MP3 分段，直播與已結束的清單，母清單自動選音訊版本；fMP4（CMAF）、AC-3／E-AC-3、加密（AES-128／SAMPLE-AES）的串流會被拒絕，狀態欄寫明原因）。控制頁可以搜尋電台（radio-browser），收藏存在卡上的 `radio.txt`。
 - 手機藍牙串流進來，播到小尾巴（喇叭模式，SBC／AAC）。
 - 白噪音 8 種；場景（最多 3 層環境音循環混音；場景檔要自己用 `tools/make_scenes.py` 從自己的素材庫產生，repo 不附）。
@@ -87,6 +87,7 @@ never run on real hardware (listed under "還沒實測過" below).
 - **USB DAC**：只有一種 DAC（CX31993）；聲音正不正確沒有用耳朵聽過（只確認資料送得出去、沒有斷音）。
 - 手機串流進來（喇叭模式）：以 JukeDial 當手機驗證，**真手機沒測過**。
 - 用正確的新密碼經控制頁設定 Wi-Fi 成功的路徑沒有第二個已知網路可測（密碼錯、找不到網路、忘記等路徑通過）。
+- **FM 後端（YM2151／YM2203，vgm／vgz／s98）**：從沒播過真的曲子（手上沒有這兩種晶片的真檔），只用合成的暫存器流（`tools/hosttest/gen_fm_vgm.py`）。已驗：輸出與 ymfm 在 PC 上逐位元一致（板子上同一組校驗和）、時間與 CPU（`docs/measurements.md`）、壞檔與截斷檔不當機。**沒驗：音色、音高、迴圈接點、淡出的聽感，GD3／S98 標籤只用合成檔看過，Shift-JIS 的 S98 標籤顯示為 `?`，沒有 YM2608／YM2610／取樣晶片（會被拒絕並說出晶片名），LDAC 輸出的成本是估計**。
 - **晶片／tracker 格式**：spc、gym、PICO-8（p8）、真的 nsfe 檔，以及大部分冷門的 tracker／AdLib 副檔名沒有測試檔，只有接線、沒測；NSFE 只用合成檔測過。聽感沒人耳驗過（只看輸出端是不是數位靜音、有沒有斷音）。已知播不了：SAP TYPE D、A2M v9–11（aPlib）、靠真 C64 時序的 RSID。HES／KSS 的曲目數一律顯示 256（檔案沒有曲數）。
 - 只有 ESP-IDF v6.1 preview、一塊 ESP32-S31 開發板、一張 16 GB FAT32 卡實測過。
 

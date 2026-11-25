@@ -99,3 +99,7 @@ The comments in those files still say "JukeDial" or "round"; they describe where
 (`ESP32S31_round/components/player_core`, same files as in the public JukeDial) and added to `player_core/CMakeLists.txt`. `pc_ts.*` is unchanged;
 `pc_hls.*` was extended in this repository (variant choice by CODECS / RESOLUTION / audio renditions, encryption / fMP4 flags, `#EXTINF` titles, a window that
 starts at a given sequence number, 1023-character addresses, heap work space in `pc_url_resolve`); see `docs/design.md`, "HLS radio". These two files now differ from JukeDial's.
+
+## fmvgm (added 2026-11-25, not from JukeDial)
+
+`components/fmvgm/` is new in this repository: an FM-chip player (YM2151, YM2203; VGM and S98) around **ymfm** (BSD-3-Clause, Aaron Giles, commit `81aec25ccbb98f4873a255f7551ac4dadac59b4a`, vendored in `fmvgm/ymfm/`, three local patches in `fmvgm/patches/`, details and the bit-exactness proof in `fmvgm/SOURCE.md`). The component depends only on `player_core`'s headers (`pc_backend.h`, `pc_io.h`, `pc_vgmhdr.[ch]`) and a small porting table (`fmvgm_port_t`; the ESP-IDF side is `fmvgm_port_idf.c`), so JukeDial can copy the directory as it is; Nano's glue (`app/main/fmglue.c`, the router in `vgmgate.c`, the skip rules in `player.c`) stays here. Study and design: `docs/research/fm-chips-ymfm.md`, `docs/design.md`.

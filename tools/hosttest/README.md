@@ -1,2 +1,9 @@
 Host tests (plain gcc/python, no ESP-IDF). `sh run.sh [OUTDIR]` builds and runs `test_pc_vgmhdr.c` (the VGM header inspector, synthetic headers, ASan + UBSan) and rebuilds the 27 synthetic VGMs of `gen_vgm_cases.py` into OUTDIR (default `/tmp/nsn_vgm_cases`).
 `test_pc_vgmhdr FILE.vgm...` prints what the inspector sees in real (un-gzipped) files; `mk_nsfe.py IN.nsf OUT.nsfe` makes a synthetic NSFE with short tune lengths.
+
+FM backend (`components/fmvgm`): `sh run_fm.sh [asan]` builds `/tmp/nsn_fm/test_fmvgm` (and `test_fmvgm_asan`, ASan + UBSan) with plain g++ (ymfm at -O2). `YMFM_DIR=<dir> SUFFIX=_ref sh run_fm.sh` builds against another copy of ymfm (the bit-exactness check against an unpatched one).
+- `python3 -I gen_fm_vgm.py OUTDIR` writes the synthetic register streams (YM2151 / YM2203 typical, dense, silent chip, dual, loop with GD3, random-register stress streams, S98 versions); `--card` the small files for the TF card; `--short` four 3 s files for gapless tests. No third-party content.
+- `test_fmvgm run FILE [-r OUTRATE] [-t TAPS] [-p inline|core0|core1] [-s SECONDS] [-w out.i16]` renders through the real backend and prints tags, length, loop, the integer checksums (the board's `dbg fm bench` prints the same ones); `bench FILE [SECONDS]` runs the producer only; `route FILE...` says where `vgmgate.c` sends a VGM; `selftest` runs the S98 / VGM edge cases, corrupted and truncated files at every length, and the worker thread tests (start, stop, restart, close, placement switches) - under ASan / UBSan, and under ThreadSanitizer when built with `-fsanitize=thread`.
+- `alias_test sweep IN OUT` / `alias_test file IN.i16 IN OUT` measure the chip-rate resamplers against `pc_rsq` (build line in `docs/measurements.md`).
+- `gen_vgm_cases.py`: after the FM backend, `refuse_YM2151*`, `refuse_YM2203` and `refuse_v100_shared_clock_YM2151` are played by it, the others are still refused (`test_fmvgm route` shows each file's route).
+

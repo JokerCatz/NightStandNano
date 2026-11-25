@@ -31,7 +31,7 @@ BLE 沒有加密，範圍內的任何人都能連線與控制播放，這是設�
 
 | 指令 | 說明 |
 |---|---|
-| `play <路徑或資料夾>` | 檔案、資料夾（連續播放）、`.zip`（當資料夾走進去，`<zip>/<項目>` 也可）。回覆 `play: ESP_OK`，或 `play: <esp 錯誤名>`；單一 VGM 含 GME 不會播的晶片時是 `play: ESP_ERR_NOT_SUPPORTED unsupported chip YM2151, OKIM6295`。資料夾、播放清單、zip 內打不開或被拒絕的檔會被跳過，`events` 多一行 `skip <檔名>: chip YM2151`（或 GME 的理由） |
+| `play <路徑或資料夾>` | 檔案、資料夾（連續播放）、`.zip`（當資料夾走進去，`<zip>/<項目>` 也可）。回覆 `play: ESP_OK`，或 `play: <esp 錯誤名>`；`.vgm` / `.vgz` 由 `vgmgate.c` 看標頭分流：GME 能播的晶片（SN76489、YM2612、YM2413）給 GME，YM2151／YM2203（單或雙晶片）給 FM 後端（`components/fmvgm`），`.s98` 一律給 FM 後端；單一檔案被拒絕時是 `play: ESP_ERR_NOT_SUPPORTED unsupported chip YM2608, OKIM6295`（寫了沒有人能播的晶片）、`… unsupported chip SN76489 + YM2151 (mixed)`（GME 的晶片與 FM 晶片混在同一檔，一個檔只能由一個後端播）或 `… too heavy for Bluetooth AAC`（這個晶片組在目前輸出與核心配置下已知太重，換輕的輸出就能播）。資料夾、播放清單、zip 內打不開或被拒絕的檔會被跳過，`events` 多一行 `skip <檔名>: chip YM2151`、`skip <檔名>: too heavy for Bluetooth AAC`（或 GME 的理由）；播到一半 FM 晶片的產生跟不上（見 `dbg fm`）也是同樣的一行，然後換下一首 |
 | `stop`、`pause`、`resume` | 待機時 `resume` 從書籤（上次停止的位置）接著播 |
 | `next`、`prev` | 多曲檔（晶片音樂）先在檔內換曲 |
 | `vol [0-100]` | 目前輸出的音量（每種輸出各自記住），不會超過 `vollimit` |
@@ -138,8 +138,20 @@ LDAC 或 Auracast 時重型效果自動暫停；核心 1 連續過載 2 秒也�
 | `crash` | 故意當機（測試當機記錄與安全模式） |
 | `memwatch [秒]` | 記錄這段時間內可用內部記憶體的最低點（1–60 秒） |
 | `keys sim <c\|p\|m> <1\|2\|3\|h>` | 模擬線控按鍵的手勢 |
-| `dbg …` | 測試用：`dbg oc arm\|off\|show`（輸出檢查）、`dbg vol [forget bt\|cast]`、`dbg ramp`、`dbg looplen <ms>`、`dbg scene …`、`dbg trim on\|off`、`dbg rt <rate> ok\|bad\|untested`、`dbg opendelay <ms>`、`dbg xfade <ms>`、`dbg spare 0\|1`、`dbg hlsreuse 0\|1`（HLS 是否重用連線）、`dbg conns`（開過幾條連線） |
+| `dbg …` | 測試用：`dbg oc arm\|off\|show`（輸出檢查）、`dbg vol [forget bt\|cast]`、`dbg ramp`、`dbg looplen <ms>`、`dbg scene …`、`dbg trim on\|off`、`dbg rt <rate> ok\|bad\|untested`、`dbg opendelay <ms>`、`dbg xfade <ms>`、`dbg spare 0\|1`、`dbg hlsreuse 0\|1`（HLS 是否重用連線）、`dbg conns`（開過幾條連線）、`dbg fm …`（FM 後端，見下）|
 | `hw sd\|led\|reset`、`sdpins` 的設定 | 見上 |
 | `cardfmt selftest`、`cardfmt sim` | 見上 |
 
 不認得的指令回 `?`；需要參數卻沒給、或不該有參數卻給了，也回 `?`。
+
+## `dbg fm`（只有 UART；FM 後端 `components/fmvgm`，YM2151 / YM2203 的 VGM 與 S98）
+| 指令 | 說明 |
+|---|---|
+| `dbg fm core 0\|1\|inline` | 晶片合成在哪裡跑：核心 0 的常駐工作者、核心 1 的工作者、或直接在解碼任務的 `render()` 裡（預設 `inline`，量測後依 `fmglue.c` 的註解決定）。播放中也能換，下一個區塊生效 |
+| `dbg fm prio N` | 工作者優先權（預設 1：比所有有工作要做的任務低，只用沒人要的 CPU） |
+| `dbg fm taps N`、`dbg fm ring MS`、`dbg fm loops N` | 重取樣器長度（預設 24）、生產者環形緩衝深度（預設 340 ms）、迴圈次數（預設 2，之後淡出 8 秒）；下一個檔起生效 |
+| `dbg fm rate auto\|native\|<Hz>` | 後端交給播放器的取樣率：`auto` = 輸出端的取樣率（播放器不再重取樣）；`native` = 晶片原生率（播放器的 pc_rsq 轉換，量測舊作法用）；下一個檔起生效 |
+| `dbg fm thr <視窗ms> <門檻ms>` | 過載規則：視窗內插入的靜音超過門檻就停掉這首並換下一首（預設 6000 / 600；門檻 0 = 不檢查） |
+| `dbg fm check 0\|1` | 靜態預檢（哪些晶片組太重）開關，預設 1 |
+| `dbg fm sum on\|off`、`dbg fm stat` | 整數校驗和（晶片原始輸出總和、輸出雜湊）；目前或最近一首的統計（生產者環形緩衝最低水位、插入靜音、每秒音訊的生產成本、跳過次數） |
+| `dbg fm bench <路徑> [秒] [核心] [優先權]` | 只跑生產者（晶片 + 重取樣）、不出聲，印每秒音訊的成本與校驗和（與 PC 的 `test_fmvgm bench` 逐位元相同） |
