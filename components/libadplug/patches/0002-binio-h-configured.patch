@@ -1,0 +1,45 @@
+--- a/binio.h.in
++++ b/binio.h
+@@ -26,19 +26,19 @@
+ //
+ // Set to 1 to build std::string supporting methods. You need the STL to
+ // do this.
+-#define BINIO_ENABLE_STRING	@ENABLE_STRING@
++#define BINIO_ENABLE_STRING	1
+ 
+ // BINIO_ENABLE_IOSTREAM - Build iostream wrapper classes
+ //
+ // Set to 1 to build the iostream wrapper classes. You need the standard
+ // C++ library to do this.
+-#define BINIO_ENABLE_IOSTREAM	@ENABLE_IOSTREAM@
++#define BINIO_ENABLE_IOSTREAM	0
+ 
+ // BINIO_ISO_STDLIB - Build with ISO C++ standard library compliance
+ //
+ // Set to 1 to build for the ISO standard C++ library (i.e. namespaces, STL and
+ // templatized iostream). Set to 0 to build for the traditional C++ library.
+-#define BINIO_ISO_STDLIB	@ISO_STDLIB@
++#define BINIO_ISO_STDLIB	1
+ 
+ // BINIO_WITH_MATH - Build with 'math.h' dependency to allow float conversions
+ //
+@@ -48,7 +48,7 @@
+ // system that doesn't support this format natively. For only reading these
+ // numbers, however, these routines are not needed. If set to 0, writing
+ // IEEE-754 numbers on an incompatible system will be disabled.
+-#define BINIO_WITH_MATH		@WITH_MATH@
++#define BINIO_WITH_MATH		1
+ 
+ /***** Implementation *****/
+ 
+@@ -96,8 +96,8 @@
+   virtual long pos() = 0;
+ 
+ protected:
+-  typedef @TYPE_INT@	Int;
+-  typedef @TYPE_FLOAT@	Float;
++  typedef int	Int;
++  typedef double	Float;
+   typedef unsigned char	Byte;	// has to be unsigned!
+ 
+   typedef int		Flags;

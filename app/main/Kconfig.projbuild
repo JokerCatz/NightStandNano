@@ -1,0 +1,37 @@
+menu "NightStand Nano"
+    menu "TF card pins: the board defaults (the user overrides them in NVS with the hw command, wired console only)"
+        config NSN_SD_WIDTH
+            int "Bus width (1 or 4)"
+            default 4
+        config NSN_SD_CLK
+            int "CLK gpio"
+            default 24
+        config NSN_SD_CMD
+            int "CMD gpio"
+            default 25
+        config NSN_SD_D0
+            int "D0 gpio"
+            default 20
+        config NSN_SD_D1
+            int "D1 gpio"
+            default 21
+        config NSN_SD_D2
+            int "D2 gpio"
+            default 22
+        config NSN_SD_D3
+            int "D3 gpio"
+            default 23
+    endmenu
+    config NSN_SINK_I2S
+        bool "I2S output template (board/sink_i2s.c, not implemented: a place to start)"
+        default n
+        help
+            Compiles the I2S output template and registers an output named "i2s". As delivered it reports "not present", so it is never used.
+            Fill in the TODO(board) places (pins, codec, rates) to make it real; see docs/porting.md.
+    config NSN_BLE_OPEN
+        bool "BLE control service without encryption (bring-up only)"
+        default y
+        help
+            Anyone in radio range can control the box. Turn off for anything that leaves the bench:
+            the characteristics then need an encrypted (bonded) link.
+endmenu

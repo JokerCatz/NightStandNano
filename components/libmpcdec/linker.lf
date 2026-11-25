@@ -1,0 +1,5 @@
+# libmpcdec's one global (the pointer to its Huffman state) goes to PSRAM with the other zero-initialised statics (compiled with -msmall-data-limit=0).
+[mapping:mpcdec_extram_bss]
+archive: liblibmpcdec.a
+entries:
+    * (extram_bss)

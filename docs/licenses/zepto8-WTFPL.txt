@@ -1,0 +1,22 @@
+ZEPTO-8 (synth.cpp, sfx.cpp), Copyright (c) 2016-2020 Sam Hocevar <sam@hocevar.net>
+https://github.com/samhocevar/zepto8 @ b2929a4fe31e5765ef66d7794edd11086b9638b4
+
+The headers of these files say: "This program is free software. It comes without any warranty, to the extent permitted by applicable law.
+You can redistribute it and/or modify it under the terms of the Do What the Fuck You Want to Public License, Version 2, as published by
+the WTFPL Task Force. See http://www.wtfpl.net/ for more details."
+
+            DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE
+                    Version 2, December 2004
+
+ Copyright (C) 2004 Sam Hocevar <sam@hocevar.net>
+
+ Everyone is permitted to copy and distribute verbatim or modified
+ copies of this license document, and changing it is allowed as long
+ as the name is changed.
+
+            DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE
+   TERMS AND CONDITIONS FOR COPYING, DISTRIBUTION AND MODIFICATION
+
+  0. You just DO WHAT THE FUCK YOU WANT TO.
+
+components/player_core/src/pc_backend_p8.c is a C re-implementation of their waveform generator and sound / music sequencer.

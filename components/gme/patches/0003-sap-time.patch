@@ -1,0 +1,186 @@
+diff --git a/gme/Sap_Emu.cpp b/gme/Sap_Emu.cpp
+index c1a2c87..975b375 100644
+--- a/gme/Sap_Emu.cpp
++++ b/gme/Sap_Emu.cpp
+@@ -84,6 +84,80 @@ static int from_dec( byte const* in, byte const* end )
+ 	return n;
+ }
+ 
++// -- SAP TIME tag addition (RP2350_player, tools/gme-patches/0003-sap-time.patch) --
++
++// Reads a run of one or more decimal digits starting at *in_out (stopping
++// at the first non-digit byte or at end), advances *in_out past them, and
++// returns the value. Returns -1 (leaving *in_out unchanged) if there is no
++// digit at all -- the bounds-defensive "malformed" signal every caller
++// below checks for.
++static int from_dec_prefix( byte const** in_out, byte const* end, int* digits_out )
++{
++	byte const* in = *in_out;
++	byte const* start = in;
++	int n = 0;
++	while ( in < end && (unsigned) (*in - '0') <= 9 )
++		n = n * 10 + (*in++ - '0');
++	if ( in == start )
++		return -1;
++	if ( digits_out )
++		*digits_out = int (in - start);
++	*in_out = in;
++	return n;
++}
++
++// Parses a SAP "TIME mm:ss[.fraction] [LOOP]" tag's value (the bytes from
++// just after "TIME" up to line_end, same slice every other tag case below
++// gets via `in`/`line_end`). Returns the duration in milliseconds, or -1 if
++// the value doesn't match the expected shape -- callers treat -1 as "leave
++// this subtune's stored time at its default", never as a hard parse error
++// for the whole file (real corpus files mix well-formed and occasionally
++// odd TIME lines; one bad line should not lose every other subtune's data).
++//
++// The optional trailing " LOOP" keyword (SAP spec) is accepted -- anything
++// after the numeric value, including "LOOP" or garbage, is simply not
++// inspected -- see tools/gme-patches/README.md for why LOOP does not change
++// which gme track_info_t field the parsed value is written to.
++//
++// Fractional seconds are a variable number of digits in this project's own
++// sample corpus (".9", ".46", ".278", ".035", ...) -- these are decimal
++// fractions of a second (".9" == 900ms, not 9ms), so the digit count changes
++// the scale, not just the precision; this scales whatever digit count shows
++// up (truncating past 3 digits, i.e. past millisecond precision) rather than
++// assuming a fixed width like "always hundredths".
++static long parse_sap_time( byte const* in, byte const* end )
++{
++	int minutes = from_dec_prefix( &in, end, 0 );
++	if ( minutes < 0 || minutes > 999 || in >= end || *in != ':' )
++		return -1;
++	in++; // skip ':'
++
++	int seconds = from_dec_prefix( &in, end, 0 );
++	if ( seconds < 0 || seconds > 59 )
++		return -1;
++
++	long frac_ms = 0;
++	if ( in < end && *in == '.' )
++	{
++		in++;
++		int digits = 0;
++		int frac = from_dec_prefix( &in, end, &digits );
++		if ( frac < 0 )
++			return -1; // '.' with no digits after it
++
++		while ( digits > 3 )
++		{
++			frac /= 10;
++			digits--;
++		}
++		static long const ms_scale [4] = { 0, 100, 10, 1 }; // digits -> ms/unit
++		frac_ms = frac * ms_scale [digits];
++	}
++
++	return (long) (minutes * 60 + seconds) * 1000 + frac_ms;
++}
++// -- end SAP TIME tag addition --
++
+ static void parse_string( byte const* in, byte const* end, int len, char* out )
+ {
+ 	byte const* start = in;
+@@ -109,6 +183,12 @@ static blargg_err_t parse_info( byte const* in, long size, Sap_Emu::info_t* out
+ 	out->name      [0] = 0;
+ 	out->copyright [0] = 0;
+ 
++	// -- SAP TIME tag addition --
++	for ( int i = 0; i < Sap_Emu::info_t::max_track_times; i++ )
++		out->track_times [i] = -1;
++	int time_line_index = 0; // counts TIME lines seen so far, incl. unstored
++	// -- end SAP TIME tag addition --
++
+ 	if ( size < 16 || memcmp( in, "SAP\x0D\x0A", 5 ) )
+ 		return gme_wrong_file_type;
+ 
+@@ -192,6 +272,21 @@ static blargg_err_t parse_info( byte const* in, long size, Sap_Emu::info_t* out
+ 		{
+ 			parse_string( in, line_end, sizeof out->copyright, out->copyright );
+ 		}
++		// -- SAP TIME tag addition --
++		else if ( !strncmp( "TIME", tag, tag_len ) )
++		{
++			int index = time_line_index++;
++			if ( (unsigned) index < (unsigned) Sap_Emu::info_t::max_track_times )
++			{
++				long ms = parse_sap_time( in, line_end );
++				if ( ms >= 0 )
++					out->track_times [index] = ms;
++				// else: malformed value -- leave this subtune's slot at
++				// its -1 default (falls back to gme's normal chain)
++			}
++			// else: more TIME lines than max_track_times -- extras ignored
++		}
++		// -- end SAP TIME tag addition --
+ 
+ 		in = line_end + 2;
+ 	}
+@@ -210,9 +305,17 @@ static void copy_sap_fields( Sap_Emu::info_t const& in, track_info_t* out )
+ 	Gme_File::copy_field_( out->copyright, in.copyright );
+ }
+ 
+-blargg_err_t Sap_Emu::track_info_( track_info_t* out, int ) const
++blargg_err_t Sap_Emu::track_info_( track_info_t* out, int track ) const
+ {
+ 	copy_sap_fields( info, out );
++	// -- SAP TIME tag addition --
++	if ( (unsigned) track < (unsigned) info_t::max_track_times )
++	{
++		long ms = info.track_times [track];
++		if ( ms >= 0 )
++			out->length = ms;
++	}
++	// -- end SAP TIME tag addition --
+ 	return 0;
+ }
+ 
+@@ -229,9 +332,17 @@ struct Sap_File : Gme_Info_
+ 		return 0;
+ 	}
+ 
+-	blargg_err_t track_info_( track_info_t* out, int ) const
++	blargg_err_t track_info_( track_info_t* out, int track ) const
+ 	{
+ 		copy_sap_fields( info, out );
++		// -- SAP TIME tag addition --
++		if ( (unsigned) track < (unsigned) Sap_Emu::info_t::max_track_times )
++		{
++			long ms = info.track_times [track];
++			if ( ms >= 0 )
++				out->length = ms;
++		}
++		// -- end SAP TIME tag addition --
+ 		return 0;
+ 	}
+ };
+diff --git a/gme/Sap_Emu.h b/gme/Sap_Emu.h
+index cb99971..95aa467 100644
+--- a/gme/Sap_Emu.h
++++ b/gme/Sap_Emu.h
+@@ -41,6 +41,23 @@ public:
+ 		char author    [256];
+ 		char name      [256];
+ 		char copyright [ 32];
++
++		// -- SAP TIME tag addition (RP2350_player, tools/gme-patches/0003-sap-time.patch) --
++		// Per-subtune duration parsed from the file's "TIME mm:ss[.fraction]
++		// [LOOP]" header lines (SAP spec, one line per subtune, in file
++		// order), in milliseconds; -1 means "no TIME line for this
++		// subtune, or it didn't parse" -- falls back to gme's normal
++		// length/intro_length/loop_length/150000ms default chain in
++		// gme.cpp's gme_track_info(), exactly as before this patch. A
++		// fixed-size array (rather than a dynamically-sized container)
++		// keeps this a small, self-contained addition; any TIME line past
++		// this many subtunes is parsed (so later lines stay aligned with
++		// their real subtune index) but has nowhere left to be stored, so
++		// its value is simply discarded. No file in this project's sample
++		// corpus (assets/local/atari/*.sap) has more than 16 subtunes.
++		enum { max_track_times = 64 };
++		long track_times [max_track_times];
++		// -- end SAP TIME tag addition --
+ 	};
+ protected:
+ 	blargg_err_t track_info_( track_info_t*, int track ) const;

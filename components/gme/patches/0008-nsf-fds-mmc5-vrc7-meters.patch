@@ -1,0 +1,59 @@
+diff --git a/components/gme/gme/Nes_Fds_Apu.h b/components/gme/gme/Nes_Fds_Apu.h
+index b12cf93..c837abb 100644
+--- a/components/gme/gme/Nes_Fds_Apu.h
++++ b/components/gme/gme/Nes_Fds_Apu.h
+@@ -30,6 +30,8 @@ public:
+ 	BLARGG_DISABLE_NOTHROW
+ 
+ 	void osc_output( int, Blip_Buffer* );
++	// Visualiser meter (JC 2026-11-17, 0008): the amplitude of the last wave step, wave sample (0..63) x volume (0..32) x master volume (0..10): 0..20160.
++	int osc_last_amp( int ) const { return last_amp; }
+ private:
+ 	static const unsigned int wave_size       = 0x40;
+ 	static const unsigned int master_vol_max  =   10;
+diff --git a/components/gme/gme/Nes_Vrc7_Apu.cpp b/components/gme/gme/Nes_Vrc7_Apu.cpp
+index 94eeb8a..ca3f668 100644
+--- a/components/gme/gme/Nes_Vrc7_Apu.cpp
++++ b/components/gme/gme/Nes_Vrc7_Apu.cpp
+@@ -62,6 +62,12 @@ void Nes_Vrc7_Apu::output_changed()
+ 	}
+ }
+ 
++int Nes_Vrc7_Apu::osc_last_amp( int i ) const
++{
++	assert( (unsigned) i < osc_count );
++	return ((OPLL *) opll)->ch_out [i];
++}
++
+ void Nes_Vrc7_Apu::reset()
+ {
+ 	addr      = 0;
+diff --git a/components/gme/gme/Nes_Vrc7_Apu.h b/components/gme/gme/Nes_Vrc7_Apu.h
+index 52a3489..8a0d8bf 100644
+--- a/components/gme/gme/Nes_Vrc7_Apu.h
++++ b/components/gme/gme/Nes_Vrc7_Apu.h
+@@ -21,6 +21,9 @@ public:
+ 	void set_output( Blip_Buffer* );
+ 	enum { osc_count = 6 };
+ 	void osc_output( int index, Blip_Buffer* );
++	// Visualiser meter (JC 2026-11-17, 0008): the last output sample of FM voice i (emu2413 ch_out, signed, about +-4096). Read from the OPLL itself:
++	// oscs [i].last_amp is only kept when every voice has its own output buffer (multi-channel mode).
++	int osc_last_amp( int i ) const;
+ 	void end_frame( blip_time_t );
+ 	void save_snapshot( vrc7_snapshot_t* ) const;
+ 	void load_snapshot( vrc7_snapshot_t const& );
+diff --git a/components/gme/gme/Nsf_Emu.h b/components/gme/gme/Nsf_Emu.h
+index cae67ec..2d97dd1 100644
+--- a/components/gme/gme/Nsf_Emu.h
++++ b/components/gme/gme/Nsf_Emu.h
+@@ -74,6 +74,10 @@ public:
+ 	class Nes_Vrc6_Apu* vrc6_() { return vrc6; }
+ 	class Nes_Namco_Apu* namco_() { return namco; }
+ 	class Nes_Fme7_Apu* fme7_() { return fme7; }
++	// JC 0008: the three expansion chips the first accessors left out (voice meters for FDS, MMC5 and VRC7); NULL unless the header selects the chip.
++	class Nes_Fds_Apu* fds_() { return fds; }
++	class Nes_Mmc5_Apu* mmc5_() { return mmc5; }
++	class Nes_Vrc7_Apu* vrc7_() { return vrc7; }
+ 	// -- end voice-peek addition --
+ protected:
+ 	blargg_err_t track_info_( track_info_t*, int track ) const;

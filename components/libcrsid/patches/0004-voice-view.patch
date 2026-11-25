@@ -1,0 +1,80 @@
+diff --git a/libcRSID/C64/C64.h b/libcRSID/C64/C64.h
+index 8cd047c..2342d4c 100644
+--- a/libcRSID/C64/C64.h
++++ b/libcRSID/C64/C64.h
+@@ -103,6 +103,11 @@ typedef struct cRSID_SIDinstance {
+  signed int         PrevVolume; //lowpass-filtered version of Volume-band register
+  int                Output;     //not attenuated (range:0..0xFFFFF depending on SID's main-volume)
+  int                Level;      //filtered version, good for VU-meter display
++ //ChipChill: per-voice view (patch 0004), indexed like the ADSR arrays (voice n at n*7) or by voice (0..2):
++ unsigned int       KeyOnCount[15]; //rising edges of the gate bit, as the envelope generator saw them
++ unsigned char      MuteMask;       //bit n set: voice n adds nothing to the mix (nor to the filter)
++ int                TapSum[3];      //voice n's share of the mix, summed over the oversamples of one output sample
++ int                TapOut[3];      //the same, averaged: one output sample's worth (when C64->VoiceTap is set)
+ } cRSID_SIDinstance;
+ 
+ typedef struct cRSID_SIDwavOutput {
+@@ -180,6 +185,7 @@ struct cRSID_C64instance { //(typedef in libcRSID.h)
+  unsigned char PSIDdigiPlaybackEnabled, PSIDdigiNybbleCounter, PSIDdigiRepeatCounter; //cRSID_playPSIDdigi()
+  unsigned short PSIDdigiSampleAddress;
+  int PSIDdigiOutput, PSIDdigiPeriodCounter;
++ unsigned char VoiceTap; //ChipChill (patch 0004): fill each SID's TapOut[] at every output sample
+ };
+ 
+ 
+diff --git a/libcRSID/C64/C64_SIDrouting.c b/libcRSID/C64/C64_SIDrouting.c
+index c7cfbcd..4316e71 100644
+--- a/libcRSID/C64/C64_SIDrouting.c
++++ b/libcRSID/C64/C64_SIDrouting.c
+@@ -164,6 +164,13 @@ static INLINE void cRSID_emulateOversampledSIDwaves (cRSID_C64instance* C64) { /
+  if ( TIGHTLY (C64->SID[4].BaseAddress != 0) ) {
+   C64->SID[4].NonFiltedSample /= HQsampleCount; C64->SID[4].FilterInputSample /= HQsampleCount;
+  }
++ if ( RARELY (C64->VoiceTap) ) { //ChipChill (patch 0004): per-voice tap, averaged to the output rate as the mix is
++  int SIDnumber, Voice;
++  for (SIDnumber = 1; SIDnumber <= CRSID_SIDCOUNT_MAX; ++SIDnumber) for (Voice = 0; Voice < 3; ++Voice) {
++   C64->SID[SIDnumber].TapOut[Voice] = C64->SID[SIDnumber].TapSum[Voice] / HQsampleCount;
++   C64->SID[SIDnumber].TapSum[Voice] = 0;
++  }
++ }
+ }
+ 
+ 
+diff --git a/libcRSID/C64/SID_ADSR.c b/libcRSID/C64/SID_ADSR.c
+index eeabf1b..81ed26a 100644
+--- a/libcRSID/C64/SID_ADSR.c
++++ b/libcRSID/C64/SID_ADSR.c
+@@ -62,7 +62,10 @@ INLINE void cRSID_emulateADSRs (FASTVAR cRSID_SIDinstance *const FASTPTR SID, FA
+   PrevGate = (*ADSRstatePtr & GATE_BITVAL);
+   if ( RARELY (PrevGate != (ChannelPtr[4] & GATE_BITVAL)) ) { //gatebit-change?
+    if (PrevGate) *ADSRstatePtr &= ~ (GATE_BITVAL | ATTACK_BITVAL | DECAYSUSTAIN_BITVAL); //falling edge
+-   else *ADSRstatePtr = (GATE_BITVAL | ATTACK_BITVAL | DECAYSUSTAIN_BITVAL | HOLDZEROn_BITVAL); //rising edge
++   else { //rising edge
++    *ADSRstatePtr = (GATE_BITVAL | ATTACK_BITVAL | DECAYSUSTAIN_BITVAL | HOLDZEROn_BITVAL);
++    ++SID->KeyOnCount[Channel]; //ChipChill (patch 0004): runs after every CPU instruction, so every gate-write counts
++   }
+   }
+ 
+   if (*ADSRstatePtr & ATTACK_BITVAL) PrescalePeriod = ADSRprescalePeriods[ AD >> 4 ];
+diff --git a/libcRSID/C64/SID_OscWaves.c b/libcRSID/C64/SID_OscWaves.c
+index b634159..f35bbd2 100644
+--- a/libcRSID/C64/SID_OscWaves.c
++++ b/libcRSID/C64/SID_OscWaves.c
+@@ -334,12 +334,17 @@ INLINE cRSID_SIDwavOutput cRSID_emulateHQwaves (cRSID_C64instance* C64, FASTVAR
+ 
+   //routing the channel signal to either the filter or the unfiltered master output depending on filter-switch SID-registers
+   Envelope = MOSTLY (SID->ChipModel==8580) ?  SID->EnvelopeCounter[Channel] : cRSID_ADSR_DAC_6581[SID->EnvelopeCounter[Channel]];
++  if ( RARELY (SID->MuteMask & FilterSwitchVal[Channel]) ) Envelope = 0; //ChipChill (patch 0004): muted voice
+   if ( RARELY (FilterSwitchReso & FilterSwitchVal[Channel]) ) {
+    SIDwavOutput.FilterInput += ( ((int)WavGenOut-CRSID_WAVE_MID) * Envelope ) / ENVELOPE_MAGNITUDE_DIV; // >> 8;
+   }
+   else if ( MOSTLY (Channel!=14 || !(VolumeBand & OFF3_BITVAL)) ) {
+    SIDwavOutput.NonFilted += ( ((int)WavGenOut-CRSID_WAVE_MID) * Envelope ) / ENVELOPE_MAGNITUDE_DIV; // >> 8;
+   }
++  if ( RARELY (C64->VoiceTap) ) { //ChipChill (patch 0004): what the voice adds, full scale +-32767 (nothing if OFF3 cuts it)
++   if ( (FilterSwitchReso & FilterSwitchVal[Channel]) || Channel!=14 || !(VolumeBand & OFF3_BITVAL) )
++    SID->TapSum[Channel/SID_CHANNEL_SPACING] += ( ((int)WavGenOut-CRSID_WAVE_MID) * Envelope ) / SID_ENVELOPE_MAGNITUDE;
++  }
+ 
+  }
+  //update readable SID1-registers (some SID tunes might use 3rd channel ENV3/OSC3 value as control)

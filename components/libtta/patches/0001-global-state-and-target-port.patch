@@ -1,0 +1,98 @@
+--- a/libtta.c
++++ b/libtta.c
+@@ -30,9 +30,15 @@
+ #endif
+ #define tta_memclear(__dest,__length) memset(__dest,0,__length)
+ #define tta_memcpy(__dest,__source,__length) memcpy(__dest,__source,__length)
++#ifdef ESP_PLATFORM   /* JC 0002: the seek table (8 bytes a frame of about a second) goes to PSRAM */
++#include "esp_heap_caps.h"
++#define tta_malloc(__length) heap_caps_aligned_alloc(16, __length, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
++#define tta_free heap_caps_free
++#else
+ #define tta_malloc(__length) aligned_alloc(16,__length)
+ #define tta_free free
+ #endif
++#endif
+ #else // MSVC
+ #define tta_memclear(__dest,__length) ZeroMemory(__dest,__length)
+ #define tta_memcpy(__dest,__source,__length) CopyMemory(__dest,__source,__length)
+@@ -68,7 +74,8 @@
+ 	0x80000000, 0x80000000, 0x80000000, 0x80000000
+ }; // bit_shift
+ 
+-const TTAuint32 *shift_16 = bit_shift + 4;
++/* JC 0001: a macro, not an initialised pointer (.data would sit in internal RAM) */
++#define shift_16 (bit_shift + 4)
+ 
+ const TTAuint32 crc32_table[256] = {
+ 	0x00000000, 0x77073096, 0xee0e612c, 0x990951ba, 0x076dc419, 0x706af48f,
+@@ -214,7 +221,7 @@
+ /////////////////////////////////////////////////////////////////////////////
+ 
+ static TTAuint8 dec_fifo_buffer[TTA_FIFO_BUFFER_SIZE + 1];
+-static TTAuint8 *dec_fifo_end = &dec_fifo_buffer[TTA_FIFO_BUFFER_SIZE];
++#define dec_fifo_end (&dec_fifo_buffer[TTA_FIFO_BUFFER_SIZE])   /* JC 0001 */
+ static TTAuint8 *dec_fifo_pos;
+ static TTAuint32 dec_fifo_bcount; // count of bits in cache
+ static TTAuint32 dec_fifo_bcache; // bit cache
+@@ -241,8 +248,9 @@
+ static jmp_buf dec_exc;	// stored stack environment for error-handling
+ static int dec_error;	// last error code value
+ 
++#ifndef TTA_NO_ENCODER   /* JC 0005: the encoder is only built for the host tests */
+ static TTAuint8 enc_fifo_buffer[TTA_FIFO_BUFFER_SIZE + 1];
+-static TTAuint8 *enc_fifo_end = &enc_fifo_buffer[TTA_FIFO_BUFFER_SIZE];
++#define enc_fifo_end (&enc_fifo_buffer[TTA_FIFO_BUFFER_SIZE])   /* JC 0001 */
+ static TTAuint8 *enc_fifo_pos;
+ static TTAuint32 enc_fifo_bcount; // count of bits in cache
+ static TTAuint32 enc_fifo_bcache; // bit cache
+@@ -267,6 +275,7 @@
+ static TTAuint32 enc_shift_bits; // packing int to pcm
+ static jmp_buf enc_exc;	// stored stack environment for error-handling
+ static int enc_error;	// last error code value
++#endif
+ 
+ ///////////////////////////////// macros ////////////////////////////////////
+ /////////////////////////////////////////////////////////////////////////////
+@@ -288,12 +297,14 @@
+ #define READ_BUFFER(x, p, d, s) { \
+ 	if (d == 2) x = *(TTAint16 *)p << s; \
+ 	else if (d == 1) x = *p << s; \
++	else if (d == 3) x = (TTAint32)(((TTAuint32)p[0] << (s)) | ((TTAuint32)p[1] << (8 + (s))) | ((TTAuint32)p[2] << (16 + (s)))); /* JC 0003: no misaligned load */ \
+ 	else x = *(TTAint32 *)p << s; \
+ 	p += d; }
+ 
+ #define WRITE_BUFFER(x, p, d) { \
+ 	if (d == 2) *(TTAint16 *)p = 0xffff & *x; \
+ 	else if (d == 1) *p = 0xff & *x; \
++	else if (d == 3) { p[0] = (TTAuint8)(*x); p[1] = (TTAuint8)(*x >> 8); p[2] = (TTAuint8)(*x >> 16); } /* JC 0003: no misaligned store */ \
+ 	else *(TTAint32 *)p = *x; \
+ 	p += d; }
+ #endif
+@@ -840,6 +851,11 @@
+ 
+ TTA_CODEC_STATUS tta_decoder_get_error() { return dec_error; }
+ 
++/* JC 0004: the decoder state is global, so one decoder may exist at a time; claim before tta_decoder_new, release after tta_decoder_done */
++static int tta_busy;
++int tta_decoder_claim(void) { return !__atomic_exchange_n(&tta_busy, 1, __ATOMIC_ACQ_REL); }
++void tta_decoder_release(void) { __atomic_store_n(&tta_busy, 0, __ATOMIC_RELEASE); }
++
+ void tta_decoder_new(TTA_io_callback *iocb) {
+ 	dec_seek_table = NULL;
+ 	dec_seek_allowed = false;
+@@ -853,6 +869,7 @@
+ 	if (dec_seek_table) tta_free(dec_seek_table);
+ } // tta_decoder_done
+ 
++#ifndef TTA_NO_ENCODER
+ ///////////////////////////// encoder functions /////////////////////////////
+ /////////////////////////////////////////////////////////////////////////////
+ 
+@@ -1251,4 +1268,6 @@
+ 	if (enc_seek_table) tta_free(enc_seek_table);
+ } // tta_encoder_done
+ 
++#endif // TTA_NO_ENCODER
++
+ /* eof */

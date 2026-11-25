@@ -1,0 +1,14 @@
+0007-ppdepack-shift
+PowerPacker: unsigned shift (UBSan: 255 << 24 in int), fuzz finding
+
+--- a/src/depackers/ppdepack.c
++++ b/src/depackers/ppdepack.c
+@@ -27,7 +27,7 @@
+   bit_cnt = (nbits);                                           \
+   while (bits_left < bit_cnt) {                                \
+     if (buf_src < src) return 0; /* out of source bits */      \
+-    bit_buffer |= (*--buf_src << bits_left);                   \
++    bit_buffer |= ((uint32)*--buf_src << bits_left);                 \
+     bits_left += 8;                                            \
+   }                                                            \
+   (var) = 0;                                                   \

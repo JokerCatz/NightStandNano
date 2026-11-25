@@ -1,0 +1,17 @@
+--- a/libtta.h
++++ b/libtta.h
+@@ -80,12 +80,8 @@
+ typedef unsigned __int64 (TTAuint64);
+ #endif
+ 
+-// boolean
+-#ifndef bool
+-typedef int (bool);
+-#define false (0)
+-#define true (1)
+-#endif
++// boolean (JC 0006: <stdbool.h>; C23 compilers make bool a keyword, so the typedef below no longer compiles)
++#include <stdbool.h>
+ 
+ typedef enum {
+ 	TTA_SUCCESS,	// setjmp data saved

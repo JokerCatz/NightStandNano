@@ -1,0 +1,654 @@
+diff --git a/gme/Ay_Apu.h b/gme/Ay_Apu.h
+index 65f3b7f..80a9847 100644
+--- a/gme/Ay_Apu.h
++++ b/gme/Ay_Apu.h
+@@ -31,6 +31,17 @@ public:
+ 	static const int osc_count = 3;
+ 	void osc_output( int index, Blip_Buffer* );
+ 
++	// -- voice-peek addition (RP2350_player, tools/gme-patches/0001-voice-peek.patch) --
++	// Read-only peek at oscillator i's last-computed output amplitude
++	// (osc_t::last_amp). Unipolar, range 0..amp_range (see amp_table in
++	// Ay_Apu.cpp -- osc->last_amp is always assigned from either 0 or
++	// amp_table[...], never negated). Updated by run_until(); reflects the
++	// level as of the last time the chip was run, not necessarily "right
++	// now". Control-path peek only; do not call from the audio render
++	// thread.
++	int osc_last_amp( int i ) const { assert( (unsigned) i < osc_count ); return oscs [i].last_amp; }
++	// -- end voice-peek addition --
++
+ 	// Set overall volume (default is 1.0)
+ 	void volume( double );
+ 
+diff --git a/gme/Ay_Emu.h b/gme/Ay_Emu.h
+index 5266d9c..d8d974a 100644
+--- a/gme/Ay_Emu.h
++++ b/gme/Ay_Emu.h
+@@ -30,6 +30,31 @@ public:
+ public:
+ 	Ay_Emu();
+ 	~Ay_Emu();
++
++	// -- voice-peek addition (RP2350_player, tools/gme-patches/0001-voice-peek.patch) --
++	// Read-only access to the internal Ay_Apu for per-voice peeking
++	// (Ay_Apu::osc_last_amp). Mirrors Nsf_Emu::apu_()'s existing
++	// pointer-accessor convention (gme/Nsf_Emu.h); apu itself was private
++	// with no such accessor before this addition.
++	Ay_Apu* apu_() { return &apu; }
++
++	// Read-only peek at the ZX Spectrum 48K beeper's last output
++	// level. The beeper (gme's 4th AY voice, name "Beeper" -- see
++	// Ay_Emu.cpp's voice_names[]) is NOT part of the AY-3-8910 chip: it's
++	// a single I/O port bit (port 0xFE, bit 4) toggled directly by Z80
++	// code, handled entirely in ay_cpu_out()/Ay_Emu.cpp, never touching
++	// `apu`. `last_beeper` holds that bit's last-written value, masked to
++	// `data & 0x10` (see ay_cpu_out: `data &= 0x10; if (last_beeper !=
++	// data) { last_beeper = data; ... }`) -- always exactly 0 or 0x10, a
++	// binary click generator with no volume register, not an oscillator
++	// with a graded amplitude. This is the only "how loud right now"
++	// signal this voice has. Updated on every port write; reflects the
++	// state as of the last write, not necessarily "right now". Unipolar
++	// by construction (0 or 0x10). Control-path peek only; do not call
++	// from the audio render thread.
++	int beeper_level() const { return last_beeper; }
++	// -- end voice-peek addition --
++
+ 	struct file_t {
+ 		header_t const* header;
+ 		byte const* end;
+diff --git a/gme/Gb_Apu.h b/gme/Gb_Apu.h
+index cde3d80..7096f53 100644
+--- a/gme/Gb_Apu.h
++++ b/gme/Gb_Apu.h
+@@ -50,6 +50,16 @@ public:
+ 
+ 	void set_tempo( double );
+ 
++	// -- voice-peek addition (RP2350_player, tools/gme-patches/0001-voice-peek.patch) --
++	// Read-only peek at oscillator i's last-computed output amplitude
++	// (Gb_Osc::last_amp; osc 0/1 square, osc 2 wave, osc 3 noise; volume-scaled
++	// per-oscillator sample level, see Gb_Oscs.cpp run()). Updated by each
++	// oscillator's run(); reflects the level as of the last time that
++	// oscillator was run, not necessarily "right now". Control-path peek
++	// only; do not call from the audio render thread.
++	int osc_last_amp( int i ) const { assert( (unsigned) i < osc_count ); return oscs [i]->last_amp; }
++	// -- end voice-peek addition --
++
+ public:
+ 	Gb_Apu();
+ private:
+diff --git a/gme/Gbs_Emu.h b/gme/Gbs_Emu.h
+index d963f40..23eb235 100644
+--- a/gme/Gbs_Emu.h
++++ b/gme/Gbs_Emu.h
+@@ -48,6 +48,14 @@ public:
+ public:
+ 	Gbs_Emu();
+ 	~Gbs_Emu();
++
++	// -- voice-peek addition (RP2350_player, tools/gme-patches/0001-voice-peek.patch) --
++	// Read-only access to the internal Gb_Apu for per-voice peeking
++	// (Gb_Apu::osc_last_amp). Mirrors Nsf_Emu::apu_()'s existing
++	// pointer-accessor convention (gme/Nsf_Emu.h); apu itself was private
++	// with no such accessor before this addition.
++	Gb_Apu* apu_() { return &apu; }
++	// -- end voice-peek addition --
+ protected:
+ 	blargg_err_t track_info_( track_info_t*, int track ) const;
+ 	blargg_err_t load_( Data_Reader& );
+diff --git a/gme/Hes_Apu.h b/gme/Hes_Apu.h
+index 4d9d1d1..60819a1 100644
+--- a/gme/Hes_Apu.h
++++ b/gme/Hes_Apu.h
+@@ -39,6 +39,31 @@ public:
+ 	static const int osc_count = 6;
+ 	void osc_output( int index, Blip_Buffer* center, Blip_Buffer* left, Blip_Buffer* right );
+ 
++	// -- voice-peek addition (RP2350_player, tools/gme-patches/0001-voice-peek.patch) --
++	// Read-only peek at oscillator i's last-computed output amplitude.
++	// Hes_Osc::last_amp is per-channel (last_amp[0]=center/left,
++	// last_amp[1]=right, see Hes_Osc::run_until in Hes_Apu.cpp: both are
++	// `dac * volume[ch]`, dac a 5-bit unsigned wave/noise sample and
++	// volume[ch] a non-negative log-table entry -- always >=0, unipolar,
++	// range 0..amp_range (0x8000)). A hard-panned voice can leave one
++	// channel silent while the other carries the audible signal, so this
++	// takes the max of the two rather than picking one -- the largest
++	// magnitude is "how loud", same "how loud, not which side" spirit as
++	// the signed accessors on other chips. Updated by run_until();
++	// reflects the level as of the last time the chip was run, not
++	// necessarily "right now". Control-path peek only; do not call from
++	// the audio render thread.
++	int osc_last_amp( int i ) const
++	{
++		assert( (unsigned) i < osc_count );
++		int a = oscs [i].last_amp [0];
++		int b = oscs [i].last_amp [1];
++		if ( a < 0 ) a = -a;
++		if ( b < 0 ) b = -b;
++		return a > b ? a : b;
++	}
++	// -- end voice-peek addition --
++
+ 	void reset();
+ 
+ 	static const unsigned int start_addr = 0x0800;
+diff --git a/gme/Hes_Emu.h b/gme/Hes_Emu.h
+index 39685f4..18ea802 100644
+--- a/gme/Hes_Emu.h
++++ b/gme/Hes_Emu.h
+@@ -35,6 +35,15 @@ public:
+ public:
+ 	Hes_Emu();
+ 	~Hes_Emu();
++
++	// -- voice-peek addition (RP2350_player, tools/gme-patches/0001-voice-peek.patch) --
++	// Read-only access to the internal Hes_Apu for per-voice peeking
++	// (Hes_Apu::osc_last_amp). Mirrors Nsf_Emu::apu_()'s existing
++	// pointer-accessor convention (gme/Nsf_Emu.h); apu itself was private
++	// with no such accessor before this addition.
++	Hes_Apu* apu_() { return &apu; }
++	// -- end voice-peek addition --
++
+ protected:
+ 	blargg_err_t track_info_( track_info_t*, int track ) const;
+ 	blargg_err_t load_( Data_Reader& );
+diff --git a/gme/Kss_Emu.h b/gme/Kss_Emu.h
+index 9e6f191..9c4d4aa 100644
+--- a/gme/Kss_Emu.h
++++ b/gme/Kss_Emu.h
+@@ -50,6 +50,21 @@ public:
+ public:
+ 	Kss_Emu();
+ 	~Kss_Emu();
++
++	// -- voice-peek addition (RP2350_player, tools/gme-patches/0001-voice-peek.patch) --
++	// Read-only access to the internal Ay_Apu/Scc_Apu for per-voice
++	// peeking (Ay_Apu::osc_last_amp / Scc_Apu::osc_last_amp). Mirrors
++	// Nsf_Emu::apu_()'s existing pointer-accessor convention
++	// (gme/Nsf_Emu.h); ay/scc were private with no such accessor before
++	// this addition. KSS voices are always AY (0-2) + SCC (3-7) --
++	// set_voice_count(osc_count) in Kss_Emu.cpp is a fixed
++	// Ay_Apu::osc_count + Scc_Apu::osc_count = 8, regardless of whether
++	// the optional SN76489 (`sn`, already gme-internal, not exposed here)
++	// is also present for this file.
++	Ay_Apu* ay_() { return &ay; }
++	Scc_Apu* scc_() { return &scc; }
++	// -- end voice-peek addition --
++
+ protected:
+ 	blargg_err_t track_info_( track_info_t*, int track ) const;
+ 	blargg_err_t load_( Data_Reader& );
+diff --git a/gme/Kss_Scc_Apu.h b/gme/Kss_Scc_Apu.h
+index 865a300..cda3628 100644
+--- a/gme/Kss_Scc_Apu.h
++++ b/gme/Kss_Scc_Apu.h
+@@ -32,6 +32,22 @@ public:
+ 	static const int osc_count = 5;
+ 	void osc_output( int index, Blip_Buffer* );
+ 
++	// -- voice-peek addition (RP2350_player, tools/gme-patches/0001-voice-peek.patch) --
++	// Read-only peek at oscillator i's last-computed output amplitude
++	// (osc_t::last_amp). Signed: last_amp = wave[phase] * volume
++	// (Scc_Apu.cpp's run_until), where wave is a signed 8-bit wavetable
++	// sample (int8_t, -128..127, from the SCC's user-writable waveform
++	// RAM) and volume is derived from a 4-bit register field, 0 or
++	// (1..15) * (amp_range/256/15) = 0 or 8..120 in this build -- so
++	// last_amp's magnitude is bounded by 128*120 = 15360, not amp_range.
++	// Sign here is "which side of the waveform", not loudness; take
++	// abs() like Gb_Apu::osc_last_amp. Updated by run_until(); reflects
++	// the level as of the last time the chip was run, not necessarily
++	// "right now". Control-path peek only; do not call from the audio
++	// render thread.
++	int osc_last_amp( int i ) const { assert( (unsigned) i < osc_count ); return oscs [i].last_amp; }
++	// -- end voice-peek addition --
++
+ 	// Set overall volume (default is 1.0)
+ 	void volume( double );
+ 
+diff --git a/gme/Nes_Apu.h b/gme/Nes_Apu.h
+index 1650e6b..a294020 100644
+--- a/gme/Nes_Apu.h
++++ b/gme/Nes_Apu.h
+@@ -94,6 +94,16 @@ public:
+ 	// accounted for (i.e. inserting CPU wait states).
+ 	void run_until( nes_time_t );
+ 
++	// -- voice-peek addition (RP2350_player, tools/gme-patches/0001-voice-peek.patch) --
++	// Read-only peek at oscillator i's last-computed output amplitude
++	// (Nes_Osc::last_amp; osc 0/1 volume range 0-15, osc 2 triangle 0-15,
++	// osc 3 noise volume range 0-15, osc 4 DMC 7-bit DAC 0-127). Updated by
++	// each oscillator's run(); reflects the level as of the last time that
++	// oscillator was run (end_frame/run_until), not necessarily "right now".
++	// Control-path peek only; do not call from the audio render thread.
++	int osc_last_amp( int i ) const { assert( (unsigned) i < osc_count ); return oscs [i]->last_amp; }
++	// -- end voice-peek addition --
++
+ public:
+ 	Nes_Apu();
+ 	BLARGG_DISABLE_NOTHROW
+diff --git a/gme/Sap_Apu.h b/gme/Sap_Apu.h
+index f451143..0d55751 100644
+--- a/gme/Sap_Apu.h
++++ b/gme/Sap_Apu.h
+@@ -14,6 +14,20 @@ public:
+ 	static const int osc_count = 4;
+ 	void osc_output( int index, Blip_Buffer* );
+ 
++	// -- voice-peek addition (RP2350_player, tools/gme-patches/0001-voice-peek.patch) --
++	// Read-only peek at oscillator i's last-computed output amplitude
++	// (osc_t::last_amp). Signed: Sap_Apu.cpp's high-pass "invert trickery"
++	// (run_until) can flip last_amp negative around a silence transition;
++	// magnitude is "how loud", not sign. volume = (0-15)*2, so 0-30 (see
++	// Sap_Apu_Impl::volume's own `/30` normalization just below, and
++	// run_until's `int volume = (osc_control & 0x0F) * 2`) bounds the
++	// magnitude to 0-30. Take abs() like Gb_Apu::osc_last_amp. Updated by
++	// run_until(); reflects the level as of the last time the chip was
++	// run, not necessarily "right now". Control-path peek only; do not
++	// call from the audio render thread.
++	int osc_last_amp( int i ) const { assert( (unsigned) i < osc_count ); return oscs [i].last_amp; }
++	// -- end voice-peek addition --
++
+ 	void reset( Sap_Apu_Impl* );
+ 
+ 	static const unsigned int start_addr = 0xD200;
+diff --git a/gme/Sap_Emu.h b/gme/Sap_Emu.h
+index d4be14a..cb99971 100644
+--- a/gme/Sap_Emu.h
++++ b/gme/Sap_Emu.h
+@@ -15,6 +15,19 @@ public:
+ public:
+ 	Sap_Emu();
+ 	~Sap_Emu();
++
++	// -- voice-peek addition (RP2350_player, tools/gme-patches/0001-voice-peek.patch) --
++	// Read-only access to the internal Sap_Apu chip(s) for per-voice
++	// peeking (Sap_Apu::osc_last_amp). Mirrors Nsf_Emu::apu_()'s existing
++	// pointer-accessor convention (gme/Nsf_Emu.h); apu/apu2 were private
++	// with no such accessor before this addition. apu2 only carries live
++	// state for stereo SAPs (info.stereo, voice_count 8); mono SAPs
++	// (voice_count 4, the common case) never touch it, so it is a valid
++	// object either way, just unused/silent.
++	Sap_Apu* apu_() { return &apu; }
++	Sap_Apu* apu2_() { return &apu2; }
++	// -- end voice-peek addition --
++
+ 	struct info_t {
+ 		byte const* rom_data;
+ 		const char* warning;
+diff --git a/gme/Sms_Apu.h b/gme/Sms_Apu.h
+index ec8bc87..8fc6862 100644
+--- a/gme/Sms_Apu.h
++++ b/gme/Sms_Apu.h
+@@ -42,6 +42,20 @@ public:
+ 	// start a new frame at time 0.
+ 	void end_frame( blip_time_t );
+ 
++	// -- voice-peek addition (RP2350_player, tools/gme-patches/0001-voice-peek.patch) --
++	// Read-only peek at oscillator i's last-computed output amplitude
++	// (Sms_Osc::last_amp; osc 0-2 square, osc 3 noise). Signed: square/
++	// noise last_amp swings +-volume (Sms_Square::run/Sms_Noise::run in
++	// Sms_Apu.cpp), where volume is the SN76489 log-volume table value,
++	// 0-64 (see the `volumes[16]` table in Sms_Apu.cpp). Magnitude is "how
++	// loud"; sign is which half-cycle the waveform is on, same convention
++	// as Gb_Apu::osc_last_amp. Updated by each oscillator's run(); reflects
++	// the level as of the last time that oscillator was run, not
++	// necessarily "right now". Control-path peek only; do not call from
++	// the audio render thread.
++	int osc_last_amp( int i ) const { assert( (unsigned) i < osc_count ); return oscs [i]->last_amp; }
++	// -- end voice-peek addition --
++
+ public:
+ 	Sms_Apu();
+ 	~Sms_Apu();
+diff --git a/gme/Snes_Spc.h b/gme/Snes_Spc.h
+index ec2db1b..d714e93 100644
+--- a/gme/Snes_Spc.h
++++ b/gme/Snes_Spc.h
+@@ -121,6 +121,16 @@ public:
+ 
+ 	uint8_t* smp_ram() { return m.ram.ram; }
+ 
++	// -- voice-peek additions (RP2350_player, tools/gme-patches/0001-voice-peek.patch) --
++	// Read-only peek at a DSP register. Control-path only (UI polling); do not
++	// call from the audio render thread. Does not alter emulation state.
++	int dsp_read_reg( int addr ) const { return dsp.read( addr ); }
++
++	// Read-only peek at voice v's current ADSR/GAIN envelope phase
++	// (Spc_Dsp::env_mode_t: 0=release 1=attack 2=decay 3=sustain).
++	int voice_env_mode( int v ) const { return (int) dsp.voice_env_mode( v ); }
++	// -- end voice-peek additions --
++
+ 	void run_until( time_t t ) { run_until_( t ); }
+ public:
+ 	BLARGG_DISABLE_NOTHROW
+diff --git a/gme/Spc_Dsp.h b/gme/Spc_Dsp.h
+index 8e05114..3d1c281 100644
+--- a/gme/Spc_Dsp.h
++++ b/gme/Spc_Dsp.h
+@@ -108,6 +108,13 @@ public:
+ 		int volume [2];         // copy of volume from DSP registers, with surround disabled
+ 		int enabled;            // -1 if enabled, 0 if muted
+ 	};
++
++	// -- voice-peek addition (RP2350_player, tools/gme-patches/0001-voice-peek.patch) --
++	// Read-only peek at voice v's current ADSR/GAIN envelope phase. Not
++	// reachable via the public register API (ENVX only exposes the numeric
++	// envelope level, not this phase enum). Additive; no emulation side effects.
++	env_mode_t voice_env_mode( int v ) const;
++	// -- end voice-peek addition --
+ private:
+ 	struct state_t
+ 	{
+@@ -166,6 +173,14 @@ inline int Spc_Dsp::read( int addr ) const
+ 	return m.regs [addr];
+ }
+ 
++// -- voice-peek addition (RP2350_player, tools/gme-patches/0001-voice-peek.patch) --
++inline Spc_Dsp::env_mode_t Spc_Dsp::voice_env_mode( int v ) const
++{
++	assert( (unsigned) v < voice_count );
++	return m.voices [v].env_mode;
++}
++// -- end voice-peek addition --
++
+ inline void Spc_Dsp::update_voice_vol( int addr )
+ {
+ 	int l = (int8_t) m.regs [addr + v_voll];
+diff --git a/gme/Spc_Emu.h b/gme/Spc_Emu.h
+index c83cd45..c40a585 100644
+--- a/gme/Spc_Emu.h
++++ b/gme/Spc_Emu.h
+@@ -57,6 +57,14 @@ public:
+ public:
+ 	Spc_Emu();
+ 	~Spc_Emu();
++
++	// -- voice-peek addition (RP2350_player, tools/gme-patches/0001-voice-peek.patch) --
++	// Read-only access to the internal Snes_Spc for per-voice peeking
++	// (Snes_Spc::dsp_read_reg / voice_env_mode). Mirrors Nsf_Emu::apu_()'s
++	// existing pointer-accessor convention (gme/Nsf_Emu.h); apu itself was
++	// private with no such accessor before this addition.
++	Snes_Spc* apu_() { return &apu; }
++	// -- end voice-peek addition --
+ protected:
+ 	blargg_err_t load_mem_( byte const*, long );
+ 	blargg_err_t track_info_( track_info_t*, int track ) const;
+diff --git a/gme/Vgm_Emu.h b/gme/Vgm_Emu.h
+index a2d847d..11ff81b 100644
+--- a/gme/Vgm_Emu.h
++++ b/gme/Vgm_Emu.h
+@@ -61,6 +61,37 @@ public:
+ public:
+ 	Vgm_Emu();
+ 	~Vgm_Emu();
++
++	// -- voice-peek additions (RP2350_player, tools/gme-patches/0001-voice-peek.patch) --
++	// Read-only access to the internal PSG/FM chips for per-voice peeking.
++	// `psg`/`ym2612`/`ym2413`/`psg_dual`/`dac_amp` are protected members of
++	// the Vgm_Emu_Impl base (gme/Vgm_Emu_Impl.h), reachable from Vgm_Emu's
++	// own member functions without any base-class header change -- these
++	// are just the first accessors that do so. Mirrors Nsf_Emu::apu_()'s
++	// existing pointer-accessor naming convention (gme/Nsf_Emu.h).
++	//
++	// psg_(i): PSG chip i (0 or 1; 1 only meaningful when psg_dual_() is
++	// true, e.g. Sega Mark III/SMS export with a second discrete PSG).
++	// Bounds-asserted like Nes_Apu::osc_last_amp.
++	Sms_Apu* psg_( int i ) { assert( (unsigned) i < 2 ); return &psg [i]; }
++	bool psg_dual_() const { return psg_dual; }
++	// ym2612_(i)/ym2413_(i): the FM chip wrapper (i likewise 0 or 1 for a
++	// dual-chip file); Ym_Emu<Emu> publicly derives Emu, so the pointer
++	// converts to the plain chip type with no slicing. *_enabled_() lets
++	// the voice-state adapter tell which FM chip (if either) is actually
++	// driving this track before peeking it -- is_classic_emu() above only
++	// says "is FM used at all", not which chip.
++	Ym2612_Emu* ym2612_( int i ) { assert( (unsigned) i < 2 ); return &ym2612 [i]; }
++	bool ym2612_enabled_() const { return ym2612 [0].enabled(); }
++	Ym2413_Emu* ym2413_( int i ) { assert( (unsigned) i < 2 ); return &ym2413 [i]; }
++	bool ym2413_enabled_() const { return ym2413 [0].enabled(); }
++	// dac_amp_(): the VGM PCM/DAC stream's last-written sample (see
++	// write_pcm() in Vgm_Emu_Impl.cpp), 0..255, or a negative sentinel
++	// (dac_disabled ORed in) when the DAC stream isn't active. This is
++	// gme_voice_count's 7th voice ("PCM") for an FM-mode VGM.
++	int dac_amp_() const { return dac_amp; }
++	// -- end voice-peek additions --
++
+ protected:
+ 	blargg_err_t track_info_( track_info_t*, int track ) const override;
+ 	blargg_err_t load_mem_( byte const*, long ) override;
+diff --git a/gme/Ym2612_Nuked.cpp b/gme/Ym2612_Nuked.cpp
+index d691fe6..044f8ea 100644
+--- a/gme/Ym2612_Nuked.cpp
++++ b/gme/Ym2612_Nuked.cpp
+@@ -35,6 +35,7 @@
+  */
+ 
+ 
++#include <assert.h>
+ #include <stdint.h>
+ #include <string.h>
+ 
+@@ -1850,6 +1851,16 @@ void Ym2612_Nuked_Emu::mute_voices(int mask)
+ 	if ( chip_r ) Ym2612_NukedImpl::OPN2_SetMute( chip_r, mask );
+ }
+ 
++// -- voice-peek addition (RP2350_player, tools/gme-patches/0001-voice-peek.patch) --
++int Ym2612_Nuked_Emu::channel_out( int i ) const
++{
++	assert( (unsigned) i < channel_count );
++	Ym2612_NukedImpl::ym3438_t *chip_r = reinterpret_cast<Ym2612_NukedImpl::ym3438_t*>(impl);
++	if ( !chip_r ) return 0;
++	return chip_r->ch_out [i];
++}
++// -- end voice-peek addition --
++
+ void Ym2612_Nuked_Emu::write0(int addr, int data)
+ {
+ 	Ym2612_NukedImpl::ym3438_t *chip_r = reinterpret_cast<Ym2612_NukedImpl::ym3438_t*>(impl);
+diff --git a/gme/Ym2612_Nuked.h b/gme/Ym2612_Nuked.h
+index 6c265b1..416e050 100644
+--- a/gme/Ym2612_Nuked.h
++++ b/gme/Ym2612_Nuked.h
+@@ -25,6 +25,32 @@ public:
+ 	enum { channel_count = 6 };
+ 	void mute_voices( int mask );
+ 
++	// -- voice-peek addition (RP2350_player, tools/gme-patches/0001-voice-peek.patch) --
++	// Read-only peek at FM channel i's current accumulated output sample
++	// (Nuked-OPN2's internal ym3438_t::ch_out[i] -- see OPN2_ChGenerate in
++	// Ym2612_Nuked.cpp: `chip->ch_out[channel] = chip->ch_acc[channel]`,
++	// indexed by the register-programmed logical channel number 0-5, the
++	// same numbering `write0`/`write1`'s channel-select register field
++	// uses -- not the chip's internal visit order, which is scrambled for
++	// pipelining but always writes back to this same per-channel slot).
++	// This is the per-channel FM accumulator right before the final
++	// DAC/pan mixdown (OPN2_ChOutput) -- the closest thing to "how loud is
++	// this FM channel right now" reachable without rewriting the core.
++	// `ch_acc`/`sum` are clamped to -256..255 in OPN2_ChGenerate just
++	// before being latched into ch_out, so this is bipolar in that range;
++	// sign is waveform phase, not loudness (same convention as the other
++	// signed accessors in this patch -- take abs()). No other gme YM2612
++	// backend (GENS/MAME) is patched: this project's vendored build only
++	// compiles the Nuked core (no VGM_YM2612_GENS/VGM_YM2612_MAME define
++	// anywhere in its CMake), so only this one needed a peek. Implemented
++	// in Ym2612_Nuked.cpp (not inline here) because `impl` is an opaque
++	// pointer at this header's scope -- ym3438_t is only a complete type
++	// inside the .cpp, same reason every method above is defined there
++	// instead of inline. Control-path peek only; do not call from the
++	// audio render thread.
++	int channel_out( int i ) const;
++	// -- end voice-peek addition --
++
+ 	// Write addr to register 0 then data to register 1
+ 	void write0( int addr, int data );
+ 
+
+diff --git a/gme/Vgm_Emu.cpp b/gme/Vgm_Emu.cpp
+index 213b214..7090ee4 100644
+--- a/gme/Vgm_Emu.cpp
++++ b/gme/Vgm_Emu.cpp
+@@ -300,9 +300,24 @@ void Vgm_Emu::mute_voices_( int mask )
+ 	dac_synth.output( &blip_buf );
+ 	if ( uses_fm )
+ 	{
+-		psg[0].output( (mask & 0x80) ? 0 : &blip_buf );
+-		if ( psg_dual )
+-			psg[1].output( (mask & 0x80) ? 0 : &blip_buf );
++		// RP2350_player voice-peek patch: PSG unfolded into 4
++		// individually mutable oscillators (bits 0x80/0x100/0x200/0x400,
++		// deliberately NOT bit 0x40 -- that bit is already spoken for
++		// below as chip->mute[5+dacen]'s YM2612-channel-6-DAC-mode mute,
++		// see Ym2612_Nuked.cpp; reusing it here would cross-wire PSG mute
++		// into FM/DAC mute on tracks using hardware DAC mode). This is
++		// the same underlying per-oscillator routing Sms_Apu::output()
++		// itself loops over (Sms_Apu.cpp): with all mask bits clear
++		// (nothing muted), looping per-oscillator here produces the same
++		// output as muting the whole chip in one call, so default
++		// (all-unmuted) rendering is unaffected.
++		for ( int i = 0; i < Sms_Apu::osc_count; i++ )
++		{
++			Blip_Buffer* buf = (mask & (0x80 << i)) ? 0 : &blip_buf;
++			psg[0].osc_output( i, buf );
++			if ( psg_dual )
++				psg[1].osc_output( i, buf );
++		}
+ 		if ( ym2612[0].enabled() )
+ 		{
+ 			dac_synth.volume( (mask & 0x40) ? 0.0 : 0.1115 / 256 * fm_gain * gain() );
+@@ -361,7 +376,15 @@ blargg_err_t Vgm_Emu::load_mem_( byte const* new_data, long new_size )
+ 	RETURN_ERR( setup_fm() );
+ 
+ 	static const char* const fm_names [] = {
+-		"FM 1", "FM 2", "FM 3", "FM 4", "FM 5", "FM 6", "PCM", "PSG"
++		// RP2350_player voice-peek patch: unfolded from the
++		// upstream 8-voice "FM1-6, PCM, PSG(combined)" shape to 10 voices
++		// -- FM1-6 unchanged, PSG unfolded into its own 4 named
++		// oscillators (Square1-3, Noise), "PCM" (the VGM PCM data-block
++		// stream, distinct from YM2612's own per-channel DAC mode) no
++		// longer gets its own display slot. See mute_voices_() below for
++		// the matching per-oscillator PSG mute wiring.
++		"FM 1", "FM 2", "FM 3", "FM 4", "FM 5", "FM 6",
++		"Square 1", "Square 2", "Square 3", "Noise"
+ 	};
+ 	static const char* const psg_names [] = { "Square 1", "Square 2", "Square 3", "Noise" };
+ 	set_voice_names( uses_fm ? fm_names : psg_names );
+@@ -397,7 +420,7 @@ blargg_err_t Vgm_Emu::setup_fm()
+ 			RETURN_ERR( ym2612[1].set_rate( fm_rate, ym2612_rate ) );
+ 			ym2612[1].enable( true );
+ 		}
+-		set_voice_count( 8 );
++		set_voice_count( 10 );
+ 	}
+ 
+ 	if ( !uses_fm && ym2413_rate )
+@@ -420,7 +443,7 @@ blargg_err_t Vgm_Emu::setup_fm()
+ 				return "YM2413 FM sound isn't supported";
+ 			CHECK_ALLOC( !result );
+ 		}
+-		set_voice_count( 8 );
++		set_voice_count( 10 );
+ 	}
+ 
+ 	if ( uses_fm )
+
+diff --git a/gme/Nes_Fme7_Apu.h b/gme/Nes_Fme7_Apu.h
+index adadc1d..1c9621f 100644
+--- a/gme/Nes_Fme7_Apu.h
++++ b/gme/Nes_Fme7_Apu.h
+@@ -29,6 +29,17 @@ public:
+ 	void save_state( fme7_apu_state_t* ) const;
+ 	void load_state( fme7_apu_state_t const& );
+ 
++	// -- voice-peek addition (RP2350_player, tools/gme-patches/0001-voice-peek.patch) --
++	// Read-only peek at oscillator i's last computed amplitude
++	// (oscs[i].last_amp), mirroring Nes_Apu::osc_last_amp/
++	// Gb_Apu::osc_last_amp above -- same bounds-assert convention.
++	// Unipolar: last_amp is either 0 or `volume`, where volume comes
++	// from amp_table[] (unsigned char, always non-negative, max
++	// amp_range=192) -- see Nes_Fme7_Apu.cpp's run_until(). Task 39 (NSF
++	// expansion-chip Channels page adapters).
++	int osc_last_amp( int i ) const { assert( (unsigned) i < osc_count ); return oscs [i].last_amp; }
++	// -- end voice-peek addition --
++
+ 	// Mask and addresses of registers
+ 	static const unsigned int addr_mask = 0xE000;
+ 	static const unsigned int data_addr = 0xE000;
+diff --git a/gme/Nes_Namco_Apu.h b/gme/Nes_Namco_Apu.h
+index 83be1ab..d0e3858 100644
+--- a/gme/Nes_Namco_Apu.h
++++ b/gme/Nes_Namco_Apu.h
+@@ -33,6 +33,17 @@ public:
+ 	void save_state( namco_state_t* out ) const;
+ 	void load_state( namco_state_t const& );
+ 
++	// -- voice-peek addition (RP2350_player, tools/gme-patches/0001-voice-peek.patch) --
++	// Read-only peek at oscillator i's last computed amplitude
++	// (Namco_Osc::last_amp), mirroring Nes_Apu::osc_last_amp/
++	// Gb_Apu::osc_last_amp above -- same bounds-assert convention. N163
++	// wavetable channels; unipolar (run_until()'s `sample = (sample &
++	// 15) * volume` is a 4-bit wavetable nibble times a 4-bit volume,
++	// both non-negative, max 15*15=225 -- see Nes_Namco_Apu.cpp). Task 39
++	// (NSF expansion-chip Channels page adapters).
++	int osc_last_amp( int i ) const { assert( (unsigned) i < osc_count ); return oscs [i].last_amp; }
++	// -- end voice-peek addition --
++
+ public:
+ 	Nes_Namco_Apu();
+ 	BLARGG_DISABLE_NOTHROW
+diff --git a/gme/Nes_Vrc6_Apu.h b/gme/Nes_Vrc6_Apu.h
+index 5952044..3db6f05 100644
+--- a/gme/Nes_Vrc6_Apu.h
++++ b/gme/Nes_Vrc6_Apu.h
+@@ -30,6 +30,19 @@ public:
+ 	enum { addr_step = 0x1000 };
+ 	void write_osc( blip_time_t, int osc, int reg, int data );
+ 
++	// -- voice-peek addition (RP2350_player, tools/gme-patches/0001-voice-peek.patch) --
++	// Read-only peek at oscillator i's last computed amplitude
++	// (Vrc6_Osc::last_amp), mirroring Nes_Apu::osc_last_amp/
++	// Gb_Apu::osc_last_amp above -- same bounds-assert convention, same
++	// "control-path peek only" contract. Oscillator 0/1 are square waves
++	// (run_square(): `volume = regs[0] & 15`, last_amp unipolar 0-15,
++	// same shape as Nes_Apu's squares); oscillator 2 is the saw wave
++	// (run_saw(): last_amp is `amp >> 3` where amp is an 8-bit
++	// accumulator, unipolar 0-31 -- see Nes_Vrc6_Apu.cpp). Task 39 (NSF
++	// expansion-chip Channels page adapters).
++	int osc_last_amp( int i ) const { assert( (unsigned) i < osc_count ); return oscs [i].last_amp; }
++	// -- end voice-peek addition --
++
+ public:
+ 	Nes_Vrc6_Apu();
+ 	BLARGG_DISABLE_NOTHROW
+diff --git a/gme/Nsf_Emu.h b/gme/Nsf_Emu.h
+index 7ecabcf..cae67ec 100644
+--- a/gme/Nsf_Emu.h
++++ b/gme/Nsf_Emu.h
+@@ -52,6 +52,29 @@ public:
+ 	Nsf_Emu();
+ 	~Nsf_Emu();
+ 	Nes_Apu* apu_() { return &apu; }
++	// -- voice-peek addition (RP2350_player, tools/gme-patches/0001-voice-peek.patch) --
++	// Same reasoning/shape as apu_() above: expose the private expansion-
++	// chip pointers so the voice adapter (player_backend_gme.cpp's
++	// voice_state_nes) can peek their oscillators. NULL unless the NSF
++	// header's chip_flags selected that chip (init_sound() in
++	// Nsf_Emu.cpp) -- callers must null-check before dereferencing, same
++	// as this header's own `if (namco) namco->volume(...)` convention a
++	// few lines below in the .cpp. Only the three chips this project's
++	// gme build actually emulates meaningfully get an accessor here
++	// (VRC6/N163/FME-7, see tools/gme-patches/README.md and the Task 39
++	// report); fds/mmc5/vrc7 are intentionally left unexposed --
++	// gme_voice_count still reports their voices (so they're not hidden
++	// from the Channels page), they just read the honest zero/silent
++	// state until/unless a future task adds their own accessors, the
++	// same "structurally present, not yet adapted" shape this backend
++	// already gives OPLL/YM2413 voices in the VGM adapter. Forward-
++	// declared incomplete pointer types are fine to return by pointer
++	// (no dereference needed at this declaration site), same as this
++	// header's own `namco`/`vrc6`/`fme7` members are already declared.
++	class Nes_Vrc6_Apu* vrc6_() { return vrc6; }
++	class Nes_Namco_Apu* namco_() { return namco; }
++	class Nes_Fme7_Apu* fme7_() { return fme7; }
++	// -- end voice-peek addition --
+ protected:
+ 	blargg_err_t track_info_( track_info_t*, int track ) const;
+ 	blargg_err_t load_( Data_Reader& );

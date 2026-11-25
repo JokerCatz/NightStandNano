@@ -1,0 +1,42 @@
+diff --git a/components/gme/gme/Vgm_Emu.cpp b/components/gme/gme/Vgm_Emu.cpp
+index 8f51ac6..0643757 100644
+--- a/components/gme/gme/Vgm_Emu.cpp
++++ b/components/gme/gme/Vgm_Emu.cpp
+@@ -363,6 +363,8 @@ blargg_err_t Vgm_Emu::load_mem_( byte const* new_data, long new_size )
+ 	psg_dual = ( psg_rate & 0x40000000 ) != 0;
+ 	psg_t6w28 = ( psg_rate & 0x80000000 ) != 0;
+ 	psg_rate &= 0x0FFFFFFF;
++	if ( psg_rate < 100000 ) // JC 0012: a hostile tiny clock (200 Hz) tripped the Dual_Resampler asserts, which abort the firmware (assertions are on); real SN76489 clocks are >= 1 MHz
++		psg_rate = 3579545;
+ 	blip_buf.clock_rate( psg_rate );
+ 
+ 	data     = new_data;
+@@ -428,6 +430,10 @@ blargg_err_t Vgm_Emu::setup_fm()
+ 	if ( !uses_fm && ym2413_rate )
+ 	{
+ 		ym2413_rate &= ~0xC0000000;
++		/* JC 0012: a hostile header clock (up to 2^30) made emu2413 run hundreds of chip steps per output sample (starved the CPU): real
++		 * YM2413 clocks are 1..8 MHz (3.58 / 4 MHz); anything else is refused. A clock of 0 (only the dual bit set) is left as it was: harmless silence. */
++		if ( ym2413_rate && ( ym2413_rate < 1000000 || ym2413_rate > 8000000 ) )
++			return "YM2413 clock out of range";
+ 		uses_fm = true;
+ 		if ( disable_oversampling_ )
+ 			fm_rate = ym2413_rate / 72.0;
+diff --git a/components/gme/gme/Vgm_Emu_Impl.cpp b/components/gme/gme/Vgm_Emu_Impl.cpp
+index 81a3a61..1e67a94 100644
+--- a/components/gme/gme/Vgm_Emu_Impl.cpp
++++ b/components/gme/gme/Vgm_Emu_Impl.cpp
+@@ -83,11 +83,11 @@ inline void Ym_Emu<Emu>::begin_frame( short* p )
+ template<class Emu>
+ inline int Ym_Emu<Emu>::run_until( int time )
+ {
++	if ( last_time < 0 ) // JC 0012: a chip the header did not enable (clock 0) is never written; the old order let a time <= -1 through to a NULL OPLL
++		return false;
+ 	int count = time - last_time;
+ 	if ( count > 0 )
+ 	{
+-		if ( last_time < 0 )
+-			return false;
+ 		last_time = time;
+ 		short* p = out;
+ 		out += count * Emu::out_chan_count;

@@ -1,0 +1,53 @@
+diff --git a/components/libtta/libtta/libtta.c b/components/libtta/libtta/libtta.c
+index b32915f..2fa4eed 100644
+--- a/components/libtta/libtta/libtta.c
++++ b/components/libtta/libtta/libtta.c
+@@ -564,7 +564,9 @@ int tta_decoder_init_set_info(TTA_info *info) {
+ 	if (info->format > 2 ||
+ 		info->bps < MIN_BPS ||
+ 		info->bps > MAX_BPS ||
+-		info->nch > MAX_NCH) {
++		info->nch > MAX_NCH ||
++		/* JC 0003: a hostile header: sps 0 divides by zero below, and dec_frames * 8 wraps a 32-bit size_t; every real rate is 8..384 kHz */
++		info->sps < 8000 || info->sps > 384000) {
+ 		dec_error = TTA_FORMAT_ERROR;
+ 		return -1;
+ 	}
+@@ -596,7 +598,9 @@ int tta_decoder_init_get_info(TTA_info *info) {
+ 	if (info->format > 2 ||
+ 		info->bps < MIN_BPS ||
+ 		info->bps > MAX_BPS ||
+-		info->nch > MAX_NCH) {
++		info->nch > MAX_NCH ||
++		/* JC 0003: a hostile header: sps 0 divides by zero below, and dec_frames * 8 wraps a 32-bit size_t; every real rate is 8..384 kHz */
++		info->sps < 8000 || info->sps > 384000) {
+ 		dec_error = TTA_FORMAT_ERROR;
+ 		return -1;
+ 	}
+@@ -618,7 +622,7 @@ int tta_decoder_init_get_info(TTA_info *info) {
+ 	dec_rate = 0;
+ 
+ 	// allocate memory for seek table data
+-	dec_seek_table = (TTAuint64 *) tta_malloc(dec_frames * sizeof(TTAuint64));
++	dec_seek_table = (TTAuint64 *) tta_malloc((size_t)((TTAuint64)dec_frames * sizeof(TTAuint64)));  /* JC 0003: 64-bit product (frames <= 2^32 / 8359) */
+ 	if (dec_seek_table == NULL) {
+ 		dec_error = TTA_MEMORY_ERROR;
+ 		return -1;
+@@ -679,7 +683,7 @@ __forceinline TTAint32 tta_decoder_get_value(TTA_adapt *rice) {
+ 		rice->sum1 += value - (rice->sum1 >> 4);
+ 		if (rice->k1 > 0 && rice->sum1 < shift_16[rice->k1])
+ 			rice->k1--;
+-		else if (rice->sum1 > shift_16[rice->k1 + 1])
++		else if (rice->sum1 > shift_16[rice->k1 + 1] && rice->k1 < 31)  /* JC 0003: k stays inside the tables */
+ 			rice->k1++;
+ 		value += bit_shift[rice->k0];
+ 	}
+@@ -687,7 +691,7 @@ __forceinline TTAint32 tta_decoder_get_value(TTA_adapt *rice) {
+ 	rice->sum0 += value - (rice->sum0 >> 4);
+ 	if (rice->k0 > 0 && rice->sum0 < shift_16[rice->k0])
+ 		rice->k0--;
+-	else if (rice->sum0 > shift_16[rice->k0 + 1])
++	else if (rice->sum0 > shift_16[rice->k0 + 1] && rice->k0 < 31)  /* JC 0003 */
+ 	rice->k0++;
+ 
+ 	value = DEC(value);

@@ -1,0 +1,663 @@
+diff --git a/components/gme/gme/Kss_Emu.cpp b/components/gme/gme/Kss_Emu.cpp
+index cf3202c..fbdb3fd 100644
+--- a/components/gme/gme/Kss_Emu.cpp
++++ b/components/gme/gme/Kss_Emu.cpp
+@@ -25,7 +25,7 @@ static int const osc_count = Ay_Apu::osc_count + Scc_Apu::osc_count;
+ using std::min;
+ using std::max;
+ 
+-bool Kss_Emu::fm_wanted = false;
++bool Kss_Emu::fm_off; // JC 0010: false = MSX-MUSIC on (OPLL-report.md)
+ 
+ Kss_Emu::Kss_Emu()
+ {
+@@ -169,10 +169,10 @@ blargg_err_t Kss_Emu::load_( Data_Reader& in )
+ 
+ 	if ( header_.device_flags & 0x08 )
+ 		set_warning( "FM sound not supported" ); // MSX-AUDIO (Y8950): not emulated
+-	if ( header_.device_flags & 0x01 && !fm_wanted )
+-		set_warning( "FM sound not supported" ); // MSX-MUSIC: emulated (JC 0009) only when fm_wanted
++	if ( header_.device_flags & 0x01 && fm_off )
++		set_warning( "FM sound not supported" ); // MSX-MUSIC: emulated (JC 0009) unless fm_off
+ 
+-	if ( header_.device_flags & 0x01 && fm_wanted && !fm )
++	if ( header_.device_flags & 0x01 && !fm_off && !fm )
+ 	{
+ 		CHECK_ALLOC( fm = BLARGG_NEW Ym2413_Emu );
+ 		CHECK_ALLOC( fm_ring = BLARGG_NEW short [fm_ring_size * 2] );
+diff --git a/components/gme/gme/Kss_Emu.h b/components/gme/gme/Kss_Emu.h
+index 0195364..70c7a5f 100644
+--- a/components/gme/gme/Kss_Emu.h
++++ b/components/gme/gme/Kss_Emu.h
+@@ -49,9 +49,9 @@ public:
+ 
+ 	static gme_type_t static_type() { return gme_kss_type; }
+ 
+-	// JC 0009 (CHIP2A): render MSX-MUSIC (YM2413 on ports $7C/$7D) when the file has it. Off by default: emu2413 costs about 0.9 us of a host core per output
+-	// sample (it is 80 % of a KSS-with-FM file's decode time), more than the board's budget; the host benches switch it on to measure it.
+-	static bool fm_wanted;
++	// JC 0009 (CHIP2A): render MSX-MUSIC (YM2413 on ports $7C/$7D) when the file has it. JC 0010 (OPLL): on by default since emu2413
++	// became cheap enough for the board; fm_off (zero-initialised: .bss, not a .data byte in internal RAM) switches it off.
++	static bool fm_off;
+ public:
+ 	Kss_Emu();
+ 	~Kss_Emu();
+diff --git a/components/gme/gme/ext/emu2413.c b/components/gme/gme/ext/emu2413.c
+index 3770365..bc29ec9 100644
+--- a/components/gme/gme/ext/emu2413.c
++++ b/components/gme/gme/ext/emu2413.c
+@@ -296,97 +296,100 @@ static INLINE int max(int i, int j) { return (i > j) ? i : j; }
+  * LW=16 or greater is recommended when upsampling.
+  * LW=8 is practically okay for downsampling.
+  */
+-#define LW 16
++#define LW OPLL_CONV_LW
+ 
+ /* resolution of sinc(x) table. sinc(x) where 0.0<=x<1.0 corresponds to sinc_table[0...SINC_RESO-1] */
+ #define SINC_RESO 256
+ #define SINC_AMP_BITS 12
+ 
+-// double hamming(double x) { return 0.54 - 0.46 * cos(2 * PI * x); }
+-static double blackman(double x) { return 0.42 - 0.5 * cos(2 * _PI_ * x) + 0.08 * cos(4 * _PI_ * x); }
+-static double sinc(double x) { return (x == 0.0 ? 1.0 : sin(_PI_ * x) / (_PI_ * x)); }
+-static double windowed_sinc(double x) { return blackman(0.5 + 0.5 * x / (LW / 2)) * sinc(x); }
++/* JC 0010: float (the board has a single-precision FPU only; double is software). Built once per OPLL_new, not per
++ * sample. The table differs from the double one in a few entries by 1 LSB of 4096 (tools/... OPLL-report.md). */
++static float blackman(float x) { return 0.42f - 0.5f * cosf(2 * (float)_PI_ * x) + 0.08f * cosf(4 * (float)_PI_ * x); }
++static float sinc(float x) { return (x == 0.0f ? 1.0f : sinf((float)_PI_ * x) / ((float)_PI_ * x)); }
++static float windowed_sinc(float x) { return blackman(0.5f + 0.5f * x / (LW / 2)) * sinc(x); }
+ 
+-/* f_inp: input frequency. f_out: output frequencey, ch: number of channels */
+-OPLL_RateConv *OPLL_RateConv_new(double f_inp, double f_out, int ch) {
++/* clk / 72: input frequency, rate: output frequency, ch: number of channels (1 or 2) */
++OPLL_RateConv *OPLL_RateConv_new(uint32_t clk, uint32_t rate, int ch) {
+   OPLL_RateConv *conv = malloc(sizeof(OPLL_RateConv));
++  const float f_ratio = (float)((double)clk / 72.0 / (double)rate); /* once per open */
++  uint64_t step256;
+   int i;
+ 
++  if (!conv)
++    return NULL;
+   conv->ch = ch;
+-  conv->f_ratio = f_inp / f_out;
+-  conv->buf = malloc(sizeof(void *) * ch);
+-  for (i = 0; i < ch; i++) {
+-    conv->buf[i] = malloc(sizeof(conv->buf[0][0]) * LW);
+-  }
++  conv->r = 72u * rate;
++  step256 = (uint64_t)(clk % conv->r) * SINC_RESO;
++  conv->q = (uint32_t)(step256 / conv->r);
++  conv->qr = (uint32_t)(step256 % conv->r);
+ 
+   /* create sinc_table for positive 0 <= x < LW/2 */
+-  conv->sinc_table = malloc(sizeof(conv->sinc_table[0]) * SINC_RESO * LW / 2);
+   for (i = 0; i < SINC_RESO * LW / 2; i++) {
+-    const double x = (double)i / SINC_RESO;
+-    if (f_out < f_inp) {
++    const float x = (float)i / SINC_RESO;
++    if (f_ratio > 1.0f) {
+       /* for downsampling */
+-      conv->sinc_table[i] = (int16_t)((1 << SINC_AMP_BITS) * windowed_sinc(x / conv->f_ratio) / conv->f_ratio);
++      conv->sinc_table[i] = (int16_t)((1 << SINC_AMP_BITS) * windowed_sinc(x / f_ratio) / f_ratio);
+     } else {
+       /* for upsampling */
+       conv->sinc_table[i] = (int16_t)((1 << SINC_AMP_BITS) * windowed_sinc(x));
+     }
+   }
+ 
++  OPLL_RateConv_reset(conv);
+   return conv;
+ }
+ 
+-static INLINE int16_t lookup_sinc_table(int16_t *table, double x) {
+-  int16_t index = (int16_t)(x * SINC_RESO);
+-  if (index < 0)
+-    index = -index;
+-  return table[min(SINC_RESO * LW / 2 - 1, index)];
+-}
+-
+ void OPLL_RateConv_reset(OPLL_RateConv *conv) {
+-  int i;
+-  conv->timer = 0;
+-  for (i = 0; i < conv->ch; i++) {
+-    memset(conv->buf[i], 0, sizeof(conv->buf[i][0]) * LW);
+-  }
++  conv->di = 0;
++  conv->rem = 0;
++  conv->head[0] = conv->head[1] = 0;
++  memset(conv->buf, 0, sizeof(conv->buf));
+ }
+ 
+-/* put original data to this converter at f_inp. */
++/* put original data to this converter at f_inp. The history is a doubled ring: buf[ch][head .. head + LW - 1] is
++ * oldest .. newest. */
+ void OPLL_RateConv_putData(OPLL_RateConv *conv, int ch, int16_t data) {
+   int16_t *buf = conv->buf[ch];
+-  int i;
+-  for (i = 0; i < LW - 1; i++) {
+-    buf[i] = buf[i + 1];
++  const unsigned h = conv->head[ch];
++  buf[h] = buf[h + LW] = data;
++  conv->head[ch] = (uint8_t)((h + 1) & (LW - 1));
++}
++
++/* Advance the fractional position by clk / (72 * rate) (once per output sample, before the getData calls). The old
++ * code kept it in a double timer; here it is exact: d = 256 * frac = di + rem / r. */
++static INLINE void conv_advance(OPLL_RateConv *conv) {
++  uint32_t rem = conv->rem + conv->qr;
++  uint32_t di = conv->di + conv->q;
++  if (rem >= conv->r) {
++    rem -= conv->r;
++    di++;
+   }
+-  buf[LW - 1] = data;
++  conv->rem = rem;
++  conv->di = di & (SINC_RESO - 1);
+ }
+ 
+-/* get resampled data from this converter at f_out. */
+-/* this function must be called f_out / f_inp times per one putData call. */
++/* get resampled data from this converter at f_out (conv_advance first). Same taps as the double version: tap k is at
++ * x = (k - (LW/2 - 1)) - frac, table index trunc(|x| * 256): for k <= LW/2 - 1 that is di + 256 * (LW/2 - 1 - k),
++ * for k >= LW/2 it is 256 * (k - LW/2 + 1) - ceil(d), clamped to the table. */
+ int16_t OPLL_RateConv_getData(OPLL_RateConv *conv, int ch) {
+-  int16_t *buf = conv->buf[ch];
+-  int32_t sum = 0;
+-  int k;
+-  double dn;
+-  conv->timer += conv->f_ratio;
+-  dn = conv->timer - floor(conv->timer);
+-  conv->timer = dn;
+-
+-  for (k = 0; k < LW; k++) {
+-    double x = ((double)k - (LW / 2 - 1)) - dn;
+-    sum += buf[k] * lookup_sinc_table(conv->sinc_table, x);
+-  }
++  const int16_t *buf = conv->buf[ch] + conv->head[ch];
++  const int16_t *tab = conv->sinc_table;
++  const int di = (int)conv->di, dc = di + (conv->rem != 0);
++  const int16_t *a = tab + di, *b = tab - dc;
++  int32_t sum;
++
++#if LW != 16
++#error "the taps below are written out for LW 16"
++#endif
++  sum = buf[0] * a[7 * SINC_RESO] + buf[1] * a[6 * SINC_RESO] + buf[2] * a[5 * SINC_RESO] + buf[3] * a[4 * SINC_RESO] +
++        buf[4] * a[3 * SINC_RESO] + buf[5] * a[2 * SINC_RESO] + buf[6] * a[1 * SINC_RESO] + buf[7] * a[0];
++  sum += buf[8] * b[1 * SINC_RESO] + buf[9] * b[2 * SINC_RESO] + buf[10] * b[3 * SINC_RESO] + buf[11] * b[4 * SINC_RESO] +
++         buf[12] * b[5 * SINC_RESO] + buf[13] * b[6 * SINC_RESO] + buf[14] * b[7 * SINC_RESO];
++  sum += buf[15] * (dc ? b[8 * SINC_RESO] : tab[SINC_RESO * LW / 2 - 1]);
+   return sum >> SINC_AMP_BITS;
+ }
+ 
+-void OPLL_RateConv_delete(OPLL_RateConv *conv) {
+-  int i;
+-  for (i = 0; i < conv->ch; i++) {
+-    free(conv->buf[i]);
+-  }
+-  free(conv->buf);
+-  free(conv->sinc_table);
+-  free(conv);
+-}
++void OPLL_RateConv_delete(OPLL_RateConv *conv) { free(conv); }
+ 
+ /***************************************************
+ 
+@@ -523,11 +526,19 @@ enum SLOT_UPDATE_FLAG {
+   UPDATE_TLL = 2,
+   UPDATE_RKS = 4,
+   UPDATE_EG = 8,
++  UPDATE_PG = 16, /* JC 0010: pg_inc[] (fnum, blk, ML, PM) */
+   UPDATE_ALL = 255,
+ };
+ 
+ static INLINE void request_update(OPLL_SLOT *slot, int flag) { slot->update_requests |= flag; }
+ 
++/* JC 0010: a released / sustained slot at rate 0 or already mute: calc_envelope makes no step and no state change.
++ * Its inputs (eg_state, eg_out, eg_rate_h) change only in calc_envelope and commit_slot_update (every other state
++ * change requests an update, so a commit runs first), and both refresh the flag. The test bit is checked apart. */
++static INLINE uint8_t eg_idle_now(const OPLL_SLOT *slot) {
++  return (slot->eg_state == RELEASE || slot->eg_state == SUSTAIN) && (slot->eg_out == EG_MUTE || slot->eg_rate_h == 0);
++}
++
+ static void commit_slot_update(OPLL_SLOT *slot) {
+ 
+ #if OPLL_DEBUG
+@@ -553,13 +564,29 @@ static void commit_slot_update(OPLL_SLOT *slot) {
+     slot->rks = rks_table[slot->blk_fnum >> 8][slot->patch->KR];
+   }
+ 
++  if (slot->update_requests & UPDATE_PG) {
++    /* JC 0010: what upstream calc_phase computed every sample, for the 8 pm steps */
++    const int8_t *pm = slot->patch->PM ? pm_table[(slot->fnum >> 6) & 7] : pm_table[0];
++    const uint32_t ml = ml_table[slot->patch->ML];
++    int j;
++    for (j = 0; j < 8; j++)
++      slot->pg_inc[j] = (((slot->fnum & 0x1ff) * 2 + pm[j]) * ml) << slot->blk >> 2;
++  }
++
+   if (slot->update_requests & (UPDATE_RKS | UPDATE_EG)) {
+     int p_rate = get_parameter_rate(slot);
+ 
+     if (p_rate == 0) {
+       slot->eg_shift = 0;
++      slot->eg_mask = 0;
+       slot->eg_rate_h = 0;
+       slot->eg_rate_l = 0;
++      /* JC 0010: upstream returned here with the requests still set, so every slot at rate 0 (most idle
++       * modulators) redid this whole commit on every sample. The result only depends on state whose every change
++       * requests an update (the one exception, a modulator's key-off, can only lower the rate to 0 again), so
++       * clearing them gives the same output (checked bit-exact on the test files, OPLL-report.md). */
++      slot->update_requests = 0;
++      slot->eg_idle = eg_idle_now(slot);
+       return;
+     }
+ 
+@@ -570,9 +597,11 @@ static void commit_slot_update(OPLL_SLOT *slot) {
+     } else {
+       slot->eg_shift = (slot->eg_rate_h < 13) ? (13 - slot->eg_rate_h) : 0;
+     }
++    slot->eg_mask = (1u << slot->eg_shift) - 1;
+   }
+ 
+   slot->update_requests = 0;
++  slot->eg_idle = eg_idle_now(slot);
+ }
+ 
+ static void reset_slot(OPLL_SLOT *slot, int number) {
+@@ -585,6 +614,8 @@ static void reset_slot(OPLL_SLOT *slot, int number) {
+   slot->output[1] = 0;
+   slot->eg_state = RELEASE;
+   slot->eg_shift = 0;
++  slot->eg_mask = 0;
++  slot->eg_idle = 0;
+   slot->rks = 0;
+   slot->tll = 0;
+   slot->key_flag = 0;
+@@ -695,8 +726,8 @@ static INLINE void set_fnumber(OPLL *opll, int ch, int fnum) {
+   car->blk_fnum = (car->blk_fnum & 0xe00) | (fnum & 0x1ff);
+   mod->fnum = fnum;
+   mod->blk_fnum = (mod->blk_fnum & 0xe00) | (fnum & 0x1ff);
+-  request_update(car, UPDATE_EG | UPDATE_RKS | UPDATE_TLL);
+-  request_update(mod, UPDATE_EG | UPDATE_RKS | UPDATE_TLL);
++  request_update(car, UPDATE_EG | UPDATE_RKS | UPDATE_TLL | UPDATE_PG);
++  request_update(mod, UPDATE_EG | UPDATE_RKS | UPDATE_TLL | UPDATE_PG);
+ }
+ 
+ /* set block data (blk : 3bit ) */
+@@ -707,8 +738,8 @@ static INLINE void set_block(OPLL *opll, int ch, int blk) {
+   car->blk_fnum = ((blk & 7) << 9) | (car->blk_fnum & 0x1ff);
+   mod->blk = blk;
+   mod->blk_fnum = ((blk & 7) << 9) | (mod->blk_fnum & 0x1ff);
+-  request_update(car, UPDATE_EG | UPDATE_RKS | UPDATE_TLL);
+-  request_update(mod, UPDATE_EG | UPDATE_RKS | UPDATE_TLL);
++  request_update(car, UPDATE_EG | UPDATE_RKS | UPDATE_TLL | UPDATE_PG);
++  request_update(mod, UPDATE_EG | UPDATE_RKS | UPDATE_TLL | UPDATE_PG);
+ }
+ 
+ static INLINE void update_rhythm_mode(OPLL *opll) {
+@@ -755,14 +786,19 @@ static void update_ampm(OPLL *opll) {
+   opll->lfo_am = am_table[(opll->am_phase >> 6) % sizeof(am_table)];
+ }
+ 
+-static void update_noise(OPLL *opll, int cycle) {
+-  int i;
+-  for (i = 0; i < cycle; i++) {
+-    if (opll->noise & 1) {
+-      opll->noise ^= 0x800200;
+-    }
+-    opll->noise >>= 1;
+-  }
++/* JC 0010: k (<= 9) LFSR steps at once. Each step is "if (n & 1) n ^= 0x800200; n >>= 1", linear over GF(2); for
++ * k <= 9 no bit fed back inside the k steps reaches bit 0 again, so the low k bits just come back at 23 - k and
++ * 9 - k. Same sequence as the loop (checked on random states). */
++static INLINE uint32_t noise_steps(uint32_t n, int k) {
++  const uint32_t l = n & ((1u << k) - 1);
++  return (n >> k) ^ (l << (23 - k)) ^ (l << (9 - k));
++}
++
++static INLINE void update_noise(OPLL *opll, int cycle) {
++  if (cycle == 14)
++    opll->noise = noise_steps(noise_steps(opll->noise, 7), 7);
++  else
++    opll->noise = noise_steps(opll->noise, 2);
+ }
+ 
+ static void update_short_noise(OPLL *opll) {
+@@ -779,16 +815,6 @@ static void update_short_noise(OPLL *opll) {
+   opll->short_noise = (h_bit2 ^ h_bit7) | (h_bit3 ^ c_bit5) | (c_bit3 ^ c_bit5);
+ }
+ 
+-static INLINE void calc_phase(OPLL_SLOT *slot, int32_t pm_phase, uint8_t reset) {
+-  const int8_t pm = slot->patch->PM ? pm_table[(slot->fnum >> 6) & 7][(pm_phase >> 10) & 7] : 0;
+-  if (reset) {
+-    slot->pg_phase = 0;
+-  }
+-  slot->pg_phase += (((slot->fnum & 0x1ff) * 2 + pm) * ml_table[slot->patch->ML]) << slot->blk >> 2;
+-  slot->pg_phase &= (DP_WIDTH - 1);
+-  slot->pg_out = slot->pg_phase >> DP_BASE_BITS;
+-}
+-
+ static INLINE uint8_t lookup_attack_step(OPLL_SLOT *slot, uint32_t counter) {
+   int index;
+ 
+@@ -841,9 +867,9 @@ static INLINE void start_envelope(OPLL_SLOT *slot) {
+   request_update(slot, UPDATE_EG);
+ }
+ 
+-static INLINE void calc_envelope(OPLL_SLOT *slot, OPLL_SLOT *buddy, uint16_t eg_counter, uint8_t test) {
++static INLINE void calc_envelope(OPLL *opll, int i, OPLL_SLOT *slot, uint16_t eg_counter, uint8_t test) {
+ 
+-  uint32_t mask = (1 << slot->eg_shift) - 1;
++  const uint32_t mask = slot->eg_mask;
+   uint8_t s;
+ 
+   if (slot->eg_state == ATTACK) {
+@@ -869,6 +895,8 @@ static INLINE void calc_envelope(OPLL_SLOT *slot, OPLL_SLOT *buddy, uint16_t eg_
+         if (!slot->pg_keep) {
+           slot->pg_phase = 0;
+         }
++        /* JC 0010: the buddy is found here, not for every slot on every sample */
++        OPLL_SLOT *buddy = slot->type == 1 ? &opll->slot[i - 1] : NULL;
+         if (buddy && !buddy->pg_keep) {
+           buddy->pg_phase = 0;
+         }
+@@ -901,26 +929,29 @@ static INLINE void calc_envelope(OPLL_SLOT *slot, OPLL_SLOT *buddy, uint16_t eg_
+   if (test) {
+     slot->eg_out = 0;
+   }
++  slot->eg_idle = eg_idle_now(slot);
+ }
+ 
+ static void update_slots(OPLL *opll) {
++  /* JC 0010: the per-sample values in locals (uint8_t stores alias everything, so they were reloaded per slot);
++   * calc_phase inlined with the cached increment */
++  const uint8_t test = opll->test_flag;
++  const uint16_t counter = (uint16_t)++opll->eg_counter;
++  const uint32_t pmi = (opll->pm_phase >> 10) & 7;
++  OPLL_SLOT *slot = opll->slot;
+   int i;
+-  opll->eg_counter++;
+ 
+-  for (i = 0; i < 18; i++) {
+-    OPLL_SLOT *slot = &opll->slot[i];
+-    OPLL_SLOT *buddy = NULL;
+-    if (slot->type == 0) {
+-      buddy = &opll->slot[i + 1];
+-    }
+-    if (slot->type == 1) {
+-      buddy = &opll->slot[i - 1];
+-    }
++  for (i = 0; i < 18; i++, slot++) {
++    uint32_t ph;
+     if (slot->update_requests) {
+       commit_slot_update(slot);
+     }
+-    calc_envelope(slot, buddy, opll->eg_counter, opll->test_flag & 1);
+-    calc_phase(slot, opll->pm_phase, opll->test_flag & 4);
++    if (!slot->eg_idle || (test & 1))
++      calc_envelope(opll, i, slot, counter, test & 1);
++    ph = (test & 4) ? 0 : slot->pg_phase;
++    ph = (ph + slot->pg_inc[pmi]) & (DP_WIDTH - 1);
++    slot->pg_phase = ph;
++    slot->pg_out = ph >> DP_BASE_BITS;
+   }
+ }
+ 
+@@ -944,6 +975,11 @@ static INLINE int16_t to_linear(uint16_t h, OPLL_SLOT *slot, int16_t am) {
+ static INLINE int16_t calc_slot_car(OPLL *opll, int ch, int16_t fm) {
+   OPLL_SLOT *slot = CAR(opll, ch);
+ 
++  if (slot->eg_out > EG_MAX) { /* JC 0010: what to_linear returns, without the lookups */
++    slot->output[1] = slot->output[0];
++    return slot->output[0] = 0;
++  }
++
+   uint8_t am = slot->patch->AM ? opll->lfo_am : 0;
+ 
+   slot->output[1] = slot->output[0];
+@@ -955,6 +991,11 @@ static INLINE int16_t calc_slot_car(OPLL *opll, int ch, int16_t fm) {
+ static INLINE int16_t calc_slot_mod(OPLL *opll, int ch) {
+   OPLL_SLOT *slot = MOD(opll, ch);
+ 
++  if (slot->eg_out > EG_MAX) { /* JC 0010: as in calc_slot_car */
++    slot->output[1] = slot->output[0];
++    return slot->output[0] = 0;
++  }
++
+   int16_t fm = slot->patch->FB > 0 ? (slot->output[1] + slot->output[0]) >> (9 - slot->patch->FB) : 0;
+   uint8_t am = slot->patch->AM ? opll->lfo_am : 0;
+ 
+@@ -1070,12 +1111,14 @@ static void update_output(OPLL *opll) {
+   update_noise(opll, 2);
+ }
+ 
++/* JC 0010: unrolled sum (int16 wrap as before) */
++static INLINE int16_t mix_mono(const OPLL *opll) {
++  const int16_t *c = opll->ch_out;
++  return (int16_t)(c[0] + c[1] + c[2] + c[3] + c[4] + c[5] + c[6] + c[7] + c[8] + c[9] + c[10] + c[11] + c[12] + c[13]);
++}
++
+ INLINE static void mix_output(OPLL *opll) {
+-  int16_t out = 0;
+-  int i;
+-  for (i = 0; i < 14; i++) {
+-    out += opll->ch_out[i];
+-  }
++  int16_t out = mix_mono(opll);
+   if (opll->conv) {
+     OPLL_RateConv_putData(opll->conv, 0, out);
+   } else {
+@@ -1086,6 +1129,12 @@ INLINE static void mix_output(OPLL *opll) {
+ INLINE static void mix_output_stereo(OPLL *opll) {
+   int16_t *out = opll->mix_out;
+   int i;
++  if (opll->pan_mono) { /* JC 0010: default pan: both sides are the plain sum ((int16_t)(x * 1.0f) == x) */
++    out[0] = out[1] = mix_mono(opll);
++    if (opll->conv)
++      OPLL_RateConv_putData(opll->conv, 0, out[0]);
++    return;
++  }
+   out[0] = out[1] = 0;
+   for (i = 0; i < 14; i++) {
+     if (opll->pan[i] & 2)
+@@ -1142,25 +1191,30 @@ void OPLL_delete(OPLL *opll) {
+ }
+ 
+ static void reset_rate_conversion_params(OPLL *opll) {
+-  const double f_out = opll->rate;
+-  const double f_inp = opll->clk / 72.0;
+-
++  /* JC 0010: the steps scaled by 72 are integers (f_inp = clk / 72 is not), so the loop in OPLL_calc* is exact */
+   opll->out_time = 0;
+-  opll->out_step = f_inp;
+-  opll->inp_step = f_out;
++  opll->out_step = opll->clk;
++  opll->inp_step = (int64_t)opll->rate * 72;
+ 
+   if (opll->conv) {
+     OPLL_RateConv_delete(opll->conv);
+     opll->conv = NULL;
+   }
+ 
+-  if (floor(f_inp) != f_out && floor(f_inp + 0.5) != f_out) {
+-    opll->conv = OPLL_RateConv_new(f_inp, f_out, 2);
++  /* no converter when rate == floor(clk / 72) or round(clk / 72) */
++  if (opll->rate && opll->clk / 72 != opll->rate && (opll->clk + 36) / 72 != opll->rate) {
++    opll->conv = OPLL_RateConv_new(opll->clk, opll->rate, 2);
+   }
++}
+ 
+-  if (opll->conv) {
+-    OPLL_RateConv_reset(opll->conv);
+-  }
++static void update_pan_mono(OPLL *opll) {
++  int i, mono = 1;
++  for (i = 0; i < 14; i++)
++    if (opll->pan[i] != 3 || opll->pan_fine[i][0] != 1.0f || opll->pan_fine[i][1] != 1.0f)
++      mono = 0;
++  if (opll->pan_mono && !mono && opll->conv) /* the right side's history was not kept while mono */
++    memcpy(opll->conv->buf[1], opll->conv->buf[0], sizeof(opll->conv->buf[0])), opll->conv->head[1] = opll->conv->head[0];
++  opll->pan_mono = (uint8_t)mono;
+ }
+ 
+ void OPLL_reset(OPLL *opll) {
+@@ -1197,6 +1251,7 @@ void OPLL_reset(OPLL *opll) {
+     opll->pan[i] = 3;
+     opll->pan_fine[i][1] = opll->pan_fine[i][0] = 1.0f;
+   }
++  opll->pan_mono = 1;
+ 
+   for (i = 0; i < 14; i++) {
+     opll->ch_out[i] = 0;
+@@ -1251,7 +1306,7 @@ void OPLL_writeReg(OPLL *opll, uint32_t reg, uint8_t data) {
+     opll->patch[0].ML = (data)&15;
+     for (i = 0; i < 9; i++) {
+       if (opll->patch_number[i] == 0) {
+-        request_update(MOD(opll, i), UPDATE_RKS | UPDATE_EG);
++        request_update(MOD(opll, i), UPDATE_RKS | UPDATE_EG | UPDATE_PG);
+       }
+     }
+     break;
+@@ -1264,7 +1319,7 @@ void OPLL_writeReg(OPLL *opll, uint32_t reg, uint8_t data) {
+     opll->patch[1].ML = (data)&15;
+     for (i = 0; i < 9; i++) {
+       if (opll->patch_number[i] == 0) {
+-        request_update(CAR(opll, i), UPDATE_RKS | UPDATE_EG);
++        request_update(CAR(opll, i), UPDATE_RKS | UPDATE_EG | UPDATE_PG);
+       }
+     }
+     break;
+@@ -1410,11 +1465,15 @@ void OPLL_writeIO(OPLL *opll, uint32_t adr, uint8_t val) {
+     opll->adr = val;
+ }
+ 
+-void OPLL_setPan(OPLL *opll, uint32_t ch, uint8_t pan) { opll->pan[ch & 15] = pan; }
++void OPLL_setPan(OPLL *opll, uint32_t ch, uint8_t pan) {
++  opll->pan[ch & 15] = pan;
++  update_pan_mono(opll);
++}
+ 
+ void OPLL_setPanFine(OPLL *opll, uint32_t ch, float pan[2]) {
+   opll->pan_fine[ch & 15][0] = pan[0];
+   opll->pan_fine[ch & 15][1] = pan[1];
++  update_pan_mono(opll);
+ }
+ 
+ void OPLL_dumpToPatch(const uint8_t *dump, size_t dump_len, OPLL_PATCH *patch) {
+@@ -1454,6 +1513,13 @@ void OPLL_getDefaultPatch(int32_t type, int32_t num, OPLL_PATCH *patch) {
+   OPLL_dumpToPatch(default_inst[type] + num * 8, 8, patch);
+ }
+ 
++/* JC 0010: patch contents changed without a request: refresh the pg_inc caches (upstream read ML / PM live) */
++static void request_pg_all(OPLL *opll) {
++  int i;
++  for (i = 0; i < 18; i++)
++    request_update(&opll->slot[i], UPDATE_PG);
++}
++
+ void OPLL_setPatch(OPLL *opll, const uint8_t *dump, size_t dump_len) {
+   OPLL_PATCH patch[2];
+   int i;
+@@ -1464,6 +1530,7 @@ void OPLL_setPatch(OPLL *opll, const uint8_t *dump, size_t dump_len) {
+     memcpy(&opll->patch[i * 2 + 0], &patch[0], sizeof(OPLL_PATCH));
+     memcpy(&opll->patch[i * 2 + 1], &patch[1], sizeof(OPLL_PATCH));
+   }
++  request_pg_all(opll);
+ }
+ 
+ void OPLL_patchToDump(const OPLL_PATCH *patch, uint8_t *dump) {
+@@ -1484,6 +1551,7 @@ void OPLL_patchToDump(const OPLL_PATCH *patch, uint8_t *dump) {
+  * longer accept without discarding the qualifier. */
+ void OPLL_copyPatch(OPLL *opll, int32_t num, const OPLL_PATCH *patch) {
+   memcpy(&opll->patch[num], patch, sizeof(OPLL_PATCH));
++  request_pg_all(opll);
+ }
+ 
+ void OPLL_resetPatch(OPLL *opll, uint8_t type) {
+@@ -1500,6 +1568,7 @@ int16_t OPLL_calc(OPLL *opll) {
+   }
+   opll->out_time -= opll->out_step;
+   if (opll->conv) {
++    conv_advance(opll->conv);
+     opll->mix_out[0] = OPLL_RateConv_getData(opll->conv, 0);
+   }
+   return opll->mix_out[0];
+@@ -1513,8 +1582,12 @@ void OPLL_calcStereo(OPLL *opll, int32_t out[2]) {
+   }
+   opll->out_time -= opll->out_step;
+   if (opll->conv) {
++    /* JC 0010: one advance per output sample. The old getData advanced its shared timer on every call, so in stereo
++     * the left side read the history at frac(2n * ratio) and the right at frac((2n + 1) * ratio) instead of
++     * frac(n * ratio): a timing jitter of up to one input sample on every output sample. */
++    conv_advance(opll->conv);
+     out[0] = OPLL_RateConv_getData(opll->conv, 0);
+-    out[1] = OPLL_RateConv_getData(opll->conv, 1);
++    out[1] = opll->pan_mono ? out[0] : OPLL_RateConv_getData(opll->conv, 1);
+   } else {
+     out[0] = opll->mix_out[0];
+     out[1] = opll->mix_out[1];
+diff --git a/components/gme/gme/ext/emu2413.h b/components/gme/gme/ext/emu2413.h
+index 095b61b..964613f 100644
+--- a/components/gme/gme/ext/emu2413.h
++++ b/components/gme/gme/ext/emu2413.h
+@@ -59,6 +59,11 @@ typedef struct __OPLL_SLOT {
+ 
+   uint32_t update_requests; /* flags to debounce update */
+ 
++  /* JC 0010 caches, rebuilt by commit_slot_update (UPDATE_PG / UPDATE_EG) */
++  uint32_t pg_inc[8]; /* phase increment for each pm step ((pm_phase >> 10) & 7) */
++  uint32_t eg_mask;   /* (1 << eg_shift) - 1 */
++  uint8_t eg_idle;    /* calc_envelope would change nothing (see eg_idle_now) */
++
+ #if OPLL_DEBUG
+   uint8_t last_eg_state;
+ #endif
+@@ -74,15 +79,20 @@ typedef struct __OPLL_SLOT {
+ #define OPLL_MASK_RHYTHM (OPLL_MASK_HH | OPLL_MASK_CYM | OPLL_MASK_TOM | OPLL_MASK_SD | OPLL_MASK_BD)
+ 
+ /* rate conveter */
++/* JC 0010 (fixed-point converter): the same 16-tap windowed sinc, but the fractional position is exact integer
++ * arithmetic (di/rem below) and the history is a doubled ring, so no double maths and no memmove per sample. */
++#define OPLL_CONV_LW 16
+ typedef struct __OPLL_RateConv {
+   int ch;
+-  double timer;
+-  double f_ratio;
+-  int16_t *sinc_table;
+-  int16_t **buf;
++  uint32_t r;        /* 72 * output rate: the fractional position is t / r */
++  uint32_t q, qr;    /* 256 * (clk mod r) = q * r + qr */
++  uint32_t di, rem;  /* floor(256 * t / r) mod 256, and 256 * t mod r */
++  uint8_t head[2];
++  int16_t buf[2][2 * OPLL_CONV_LW];
++  int16_t sinc_table[256 * OPLL_CONV_LW / 2]; /* inline: one 4.2 KB allocation (PSRAM on the board, not a small internal one) */
+ } OPLL_RateConv;
+ 
+-OPLL_RateConv *OPLL_RateConv_new(double f_inp, double f_out, int ch);
++OPLL_RateConv *OPLL_RateConv_new(uint32_t clk, uint32_t rate, int ch);
+ void OPLL_RateConv_reset(OPLL_RateConv *conv);
+ void OPLL_RateConv_putData(OPLL_RateConv *conv, int ch, int16_t data);
+ int16_t OPLL_RateConv_getData(OPLL_RateConv *conv, int ch);
+@@ -96,9 +106,10 @@ typedef struct __OPLL {
+ 
+   uint32_t adr;
+ 
+-  double inp_step;
+-  double out_step;
+-  double out_time;
++  /* JC 0010: integer (x72) steps: out_step = clk, inp_step = 72 * rate */
++  int64_t inp_step;
++  int64_t out_step;
++  int64_t out_time;
+ 
+   uint8_t reg[0x40];
+   uint8_t test_flag;
+@@ -129,6 +140,7 @@ typedef struct __OPLL {
+   int16_t ch_out[14];
+ 
+   int16_t mix_out[2];
++  uint8_t pan_mono; /* JC 0010: every pan is 3 and every fine pan 1.0: one mix for both sides */
+ 
+   OPLL_RateConv *conv;
+ } OPLL;

@@ -1,0 +1,33 @@
+0004-no-external-sample-files
+callback sources have no file name: MFP refuses, no XMP_INSTRUMENT_PATH environment lookup
+
+--- a/src/loaders/mfp_load.c
++++ b/src/loaders/mfp_load.c
+@@ -303,7 +303,8 @@
+ 	libxmp_path_init(&sp);
+ 
+ 	/* first check smp.filename */
+-	if (strlen(m->basename) < 5 || m->basename[3] != '.') {
++	/* JukeDial patch 0004: a module from a callback source has no file name and no folder: the companion smp.* file cannot be found */
++	if (m->basename == NULL || m->dirname == NULL || strlen(m->basename) < 5 || m->basename[3] != '.') {
+ 		D_(D_CRIT "invalid filename %s", m->basename);
+ 		goto err;
+ 	}
+--- a/src/loaders/common.c
++++ b/src/loaders/common.c
+@@ -479,14 +479,10 @@
+ 
+ static const char *libxmp_get_instrument_path(struct module_data *m)
+ {
+-	const char *env;
++	/* JukeDial patch 0004: no environment variable: instruments are never looked for outside the module */
+ 	if (m->instrument_path) {
+ 		return m->instrument_path;
+ 	}
+-	env = getenv("XMP_INSTRUMENT_PATH");
+-	if (env) {
+-		return env;
+-	}
+ 	return NULL;
+ }
+ 

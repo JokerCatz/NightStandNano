@@ -1,0 +1,16 @@
+{
+  "name": "nightstand-nano-web",
+  "version": "1.0.0",
+  "private": true,
+  "description": "NightStand Nano control page (Web Bluetooth): sources in src/, committed build in dist/",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node build.mjs --dev",
+    "test": "node --test test/",
+    "check": "node check.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}

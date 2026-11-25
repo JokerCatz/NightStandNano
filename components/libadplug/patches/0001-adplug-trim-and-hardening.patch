@@ -1,0 +1,992 @@
+--- a/a2m-v2.cpp
++++ b/a2m-v2.cpp
+@@ -208,11 +208,13 @@
+     return instrument ? instrument->instr_data.fine_tune : 0;
+ }
+ 
++static tINSTR_DATA g_zero_instr;   // libadplug patch 0001: never NULL for a damaged instrument number (read-only use; zero-initialised static: PSRAM)
++
+ inline tINSTR_DATA *Ca2mv2Player::get_instr_data_by_ch(int chan)
+ {
+     tINSTR_DATA_EXT *instrument = get_instr(ch->voice_table[chan]);
+ 
+-    return instrument ? &instrument->instr_data : NULL;
++    return instrument ? &instrument->instr_data : &g_zero_instr;
+ }
+ 
+ inline tINSTR_DATA *Ca2mv2Player::get_instr_data(uint8_t ins)
+@@ -251,7 +253,7 @@
+     for (unsigned int i = 0; i < n; i++) {
+         uint32_t result = 0; // all enabled by default
+         for (unsigned int bit = 0; bit < 28; bit++) {
+-            result |= (dis_fmregs[i][bit] & 1) << bit;
++            result |= (((const unsigned char *)dis_fmregs[i])[bit] & 1) << bit;   // libadplug patch 0001: the "bool"s are raw file bytes (255 is not a valid bool: UBSan)
+         }
+ 
+         tINSTR_DATA_EXT *instrument = get_instr(i + 1);
+@@ -337,7 +339,7 @@
+ 
+ void Ca2mv2Player::patterns_free()
+ {
+-    if (eventsinfo->events && eventsinfo->size) {
++    if (eventsinfo->events) {   // libadplug patch 0001: also free the 1-byte block of a zero-pattern song (leaked)
+         free(eventsinfo->events);
+         eventsinfo->events = NULL;
+         eventsinfo->size = 0;
+@@ -542,6 +544,7 @@
+ bool Ca2mv2Player::is_ins_adsr_data_empty(int ins)
+ {
+     tINSTR_DATA *i = get_instr_data(ins);
++    if (!i) return true;   // libadplug patch 0001: instrument number outside the table (damaged file)
+ 
+     return (
+         !i->fm.data[4] &&
+@@ -712,7 +715,8 @@
+     if (d.ins2 == 0) d.ins2 = ch->voice_table[d.ch2];
+ 
+     if (d.ins1 && d.ins2) {
+-        d.conn = (get_instr_data(d.ins1)->fm.connect << 1) | get_instr_data(d.ins2)->fm.connect;
++        tINSTR_DATA *i1 = get_instr_data(d.ins1), *i2 = get_instr_data(d.ins2);   // libadplug patch 0001: NULL for a damaged instrument number
++        d.conn = ((i1 ? i1->fm.connect : 0) << 1) | (i2 ? i2->fm.connect : 0);
+     }
+ 
+     return d;
+@@ -735,6 +739,7 @@
+     }
+ 
+     tINSTR_DATA *instr = get_instr_data_by_ch(chan);
++    if (!instr) return;   // libadplug patch 0001
+ 
+     // ** OPL3 emulation workaround **
+     // force muted instrument volume with missing channel ADSR data
+@@ -2101,6 +2106,9 @@
+ 
+     if (!_4op_vol_valid_chan(chan)) {
+         tINSTR_DATA *ins = get_instr_data(ch->event_table[chan].instr_def);
++        tINSTR_DATA zero_ins;   // libadplug patch 0001: read-only stand-in for a missing instrument
++        memset(&zero_ins, 0, sizeof zero_ins);
++        if (!ins) ins = &zero_ins;
+ 
+         limit1 = ch->peak_lock[chan] ? ins->fm.volC : 0;
+         limit2 = ch->peak_lock[chan] ? ins->fm.volM : 0;
+@@ -2119,6 +2127,10 @@
+             // Can use get_instr_data_by_ch()
+             tINSTR_DATA *ins1 = get_instr_data(d.ins1);
+             tINSTR_DATA *ins2 = get_instr_data(d.ins2);
++            tINSTR_DATA zero_ins;   // libadplug patch 0001: read-only stand-in for a missing instrument
++            memset(&zero_ins, 0, sizeof zero_ins);
++            if (!ins1) ins1 = &zero_ins;
++            if (!ins2) ins2 = &zero_ins;
+ 
+             uint8_t limit1_volC = ch->peak_lock[d.ch1] ? ins1->fm.volC : 0;
+             uint8_t limit1_volM = ch->peak_lock[d.ch1] ? ins1->fm.volM : 0;
+@@ -3223,7 +3235,7 @@
+     case 9:
+     case 10:
+     case 11: // apack (aPlib)
+-        aP_depack(src, dst, srcsize, dstsize);
++        /* never reached: the loaders refuse these versions (libadplug patch 0001) */
+         break;
+     case 12:
+     case 13:
+@@ -3764,7 +3776,7 @@
+     ffver = header->ffver;
+     type = 1;
+ 
+-    if (!ffver || ffver > 14)
++    if (!ffver || ffver > 14 || (ffver >= 9 && ffver <= 11))   /* libadplug patch 0001: v9-11 are aPlib-packed; the aPlib depacker has no licence and is not built */
+         return false;
+ 
+     songinfo->tempo = header->tempo;
+@@ -3993,7 +4005,7 @@
+     ffver = header->ffver;
+     type = 0;
+ 
+-    if (!ffver || ffver > 14)
++    if (!ffver || ffver > 14 || (ffver >= 9 && ffver <= 11))   /* libadplug patch 0001: v9-11 are aPlib-packed; the aPlib depacker has no licence and is not built */
+         return false;
+ 
+     songinfo->patt_len = 64;
+--- a/a2m-v2.h
++++ b/a2m-v2.h
+@@ -40,7 +40,6 @@
+ #include <math.h>
+ 
+ #include "player.h"
+-#include "depack.h"
+ #include "sixdepack.h"
+ #include "unlzh.h"
+ #include "unlzss.h"
+--- a/bam.cpp
++++ b/bam.cpp
+@@ -75,7 +75,8 @@
+ 	f->readString(id, 4);
+ 	if(strncmp(id,"CBMF",4)) { fp.close(f); return false; }
+ 
+-	song = new unsigned char [size];
++	song = new unsigned char [size + 8];   // libadplug patch 0001: 8 zero bytes so a command at the very end reads zeros, not heap
++	memset(song, 0, size + 8);
+ 	for(i = 0; i < size; i++) song[i] = f->readInt(1);
+ 
+ 	fp.close(f);
+@@ -97,7 +98,7 @@
+ 		songend = true;
+ 	}
+ 
+-	while(song[pos] < 128) {
++	while(pos < size && song[pos] < 128) {   // libadplug patch 0001: pos < size
+ 		cmd = song[pos] & 240;
+ 		c = song[pos] & 15;
+ 		switch(cmd) {
+@@ -107,8 +108,8 @@
+ 			break;
+ 		case 16:	// start note
+ 			if(c < 9) {
+-				opl->write(0xa0 + c, freq[song[++pos]] & 255);
+-				opl->write(0xb0 + c, (freq[song[pos]] >> 8) + 32);
++				opl->write(0xa0 + c, freq[song[++pos] % 127] & 255);   // libadplug patch 0001: freq[] has 127 entries
++				opl->write(0xb0 + c, (freq[song[pos] % 127] >> 8) + 32);
+ 			} else
+ 				pos++;
+ 			pos++;
+--- a/cmf.cpp
++++ b/cmf.cpp
+@@ -228,7 +228,9 @@
+ 	this->iDelayRemaining = 0;
+ 
+ 	// Read in the next event
++	int iGuard = 0;   // libadplug patch 0001: a damaged file can loop on zero-delay events forever (after the song end the pointer restarts at 0)
+ 	while (!this->iDelayRemaining) {
++		if (this->bSongEnd || ++iGuard > 200000) { this->bSongEnd = true; return false; }
+ 		uint8_t iCommand = this->iPlayPointer < this->iSongLen ? this->data[this->iPlayPointer++] : 0;
+ 		if ((iCommand & 0x80) == 0) {
+ 			// Running status, use previous command
+@@ -521,7 +523,8 @@
+ // iInstrument: Index into this->pInstruments array of CMF instruments
+ void CcmfPlayer::writeInstrumentSettings(uint8_t iChannel, uint8_t iOperatorSource, uint8_t iOperatorDest, uint8_t iInstrument)
+ {
+-	assert(iChannel <= 8);
++	if (iChannel > 8) return;   // libadplug patch 0001: was an assert (the channel is a MIDI channel of a damaged file)
++	iInstrument &= 0x7F; // libadplug patch 0001: a program number from the file is 0-127 (a damaged file gave 128+: read past the 128-entry array)
+ 
+ 	uint8_t iOPLOffset = OPLOFFSET(iChannel);
+ 	if (iOperatorDest) iOPLOffset += 3; // Carrier if iOperator == 1 (else Modulator)
+--- a/coktel.cpp
++++ b/coktel.cpp
+@@ -130,6 +130,7 @@
+ 	uint16_t pitch;
+ 
+ 	// execute MIDI command
++	if (pos + 4 > size) { pos = size; return; }   // libadplug patch 0001: no command is longer than 4 bytes; a damaged tail ends the song
+ 	status = data[pos++];
+ 	if (status == COK_END_OF_SONG)
+ 	{
+@@ -146,6 +147,7 @@
+ 
+ 		if (insts && modifyTimbre != 0xFF && modifyTimbre < nrTimbre)
+ 		{
++			if (note >= ADLIB_INST_LEN) return;   // libadplug patch 0001
+ 			insts[modifyTimbre].modified[note] = val;
+ 			insts[modifyTimbre].backend_index = load_instrument_data(&insts[modifyTimbre].modified[0], ADLIB_INST_LEN);
+ 
+--- a/database.h
++++ b/database.h
+@@ -1,169 +1,32 @@
+-/*
+- * AdPlug - Replayer for many OPL2/OPL3 audio file formats.
+- * Copyright (c) 1999 - 2003 Simon Peter <dn.tlp@gmx.net>, et al.
+- * 
+- * This library is free software; you can redistribute it and/or
+- * modify it under the terms of the GNU Lesser General Public
+- * License as published by the Free Software Foundation; either
+- * version 2.1 of the License, or (at your option) any later version.
+- * 
+- * This library is distributed in the hope that it will be useful,
+- * but WITHOUT ANY WARRANTY; without even the implied warranty of
+- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+- * Lesser General Public License for more details.
+- * 
+- * You should have received a copy of the GNU Lesser General Public
+- * License along with this library; if not, write to the Free Software
+- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+- *
+- * database.h - AdPlug database class
+- * Copyright (c) 2002 Riven the Mage <riven@ok.ru>
+- * Copyright (c) 2002, 2003 Simon Peter <dn.tlp@gmx.net>
+- */
+-
++/* AdPlug 2.4 database.h replaced (libadplug patch 0001): the record database (clock speeds, song lengths) is not built; players keep their
++ * `CAdPlugDatabase *db` member, always 0. Only the file key (CRC16:CRC32 of the whole file) stays: got.cpp tells two songs apart with it
++ * (code of CAdPlugDatabase::CKey::make in database.cpp, "CRC16 and CRC32 calculation routines (c) Zhengxi"). */
+ #ifndef H_ADPLUG_DATABASE
+ #define H_ADPLUG_DATABASE
+-
+-#include <iostream>
+-#include <string>
+ #include <binio.h>
+-
+ class CAdPlugDatabase
+ {
+ public:
+   class CKey
+   {
+   public:
+-    unsigned short	crc16;
+-    unsigned long	crc32;
+-
+-    CKey() {};
+-    CKey(binistream &in);
+-
+-    bool operator==(const CKey &key);
+-
+-  private:
+-    void make(binistream &in);
++    unsigned short crc16;
++    unsigned long crc32;
++    CKey() : crc16(0), crc32(0) {}
++    CKey(binistream &buf)
++    {
++      crc16 = 0; crc32 = 0xffffffffUL;
++      while(!buf.eof()) {
++        unsigned char byte = buf.readInt(1);
++        for(int j = 0; j < 8; j++) {
++          crc16 = ((crc16 ^ byte) & 1) ? (unsigned short)((crc16 >> 1) ^ 0xa001) : (unsigned short)(crc16 >> 1);
++          crc32 = ((crc32 ^ byte) & 1) ? (crc32 >> 1) ^ 0xedb88320UL : crc32 >> 1;
++          byte >>= 1;
++        }
++      }
++      crc32 = ~crc32 & 0xffffffffUL;
++    }
++    bool operator==(const CKey &key) { return crc16 == key.crc16 && crc32 == key.crc32; }
+   };
+-
+-  class CRecord
+-  {
+-  public:
+-    typedef enum { Plain, SongInfo, ClockSpeed } RecordType;
+-
+-    RecordType	type;
+-    CKey	key;
+-    std::string	filetype, comment;
+-
+-    static CRecord *factory(RecordType type);
+-    static CRecord *factory(binistream &in);
+-
+-    virtual ~CRecord() {}
+-
+-    void write(binostream &out);
+-
+-    bool user_read(std::istream &in, std::ostream &out);
+-    bool user_write(std::ostream &out);
+-
+-  protected:
+-    CRecord() : type(Plain) {}
+-    virtual void read_own(binistream &in) = 0;
+-    virtual void write_own(binostream &out) = 0;
+-    virtual unsigned long get_size() = 0;
+-    virtual bool user_read_own(std::istream &in, std::ostream &out) = 0;
+-    virtual bool user_write_own(std::ostream &out) = 0;
+-  };
+-
+-  CAdPlugDatabase();
+-  ~CAdPlugDatabase();
+-
+-  bool	load(std::string db_name);
+-  bool	load(binistream &f);
+-  bool	save(std::string db_name);
+-  bool	save(binostream &f);
+-
+-  bool	insert(CRecord *record);
+-
+-  void	wipe(CRecord *record);
+-  void	wipe();
+-
+-  CRecord *search(CKey const &key);
+-  bool lookup(CKey const &key);
+-
+-  CRecord *get_record();
+-
+-  bool	go_forward();
+-  bool	go_backward();
+-
+-  void	goto_begin();
+-  void	goto_end();
+-
+-private:
+-  static const unsigned short hash_radix;
+-
+-  class DB_Bucket
+-  {
+-  public:
+-    unsigned long	index;
+-    bool		deleted;
+-    DB_Bucket		*chain;
+-
+-    CRecord		*record;
+-
+-    DB_Bucket(unsigned long nindex, CRecord *newrecord, DB_Bucket *newchain = 0);
+-    ~DB_Bucket();
+-  };
+-
+-  DB_Bucket	**db_linear;
+-  DB_Bucket	**db_hashed;
+-
+-  unsigned long	linear_index, linear_logic_length, linear_length;
+-
+-  unsigned long make_hash(CKey const &key);
+-};
+-
+-class CPlainRecord: public CAdPlugDatabase::CRecord
+-{
+-public:
+-  CPlainRecord() { type = Plain; }
+-
+-protected:
+-  virtual void read_own(binistream &in) {}
+-  virtual void write_own(binostream &out) {}
+-  virtual unsigned long get_size() { return 0; }
+-  virtual bool user_read_own(std::istream &in, std::ostream &out) { return true; }
+-  virtual bool user_write_own(std::ostream &out) { return true; }
+-};
+-
+-class CInfoRecord: public CAdPlugDatabase::CRecord
+-{
+-public:
+-  std::string	title;
+-  std::string	author;
+-
+-  CInfoRecord();
+-
+-protected:
+-  virtual void read_own(binistream &in);
+-  virtual void write_own(binostream &out);
+-  virtual unsigned long get_size();
+-  virtual bool user_read_own(std::istream &in, std::ostream &out);
+-  virtual bool user_write_own(std::ostream &out);
+-};
+-
+-class CClockRecord: public CAdPlugDatabase::CRecord
+-{
+-public:
+-  float	clock;
+-
+-  CClockRecord();
+-
+-protected:
+-  virtual void read_own(binistream &in);
+-  virtual void write_own(binostream &out);
+-  virtual unsigned long get_size();
+-  virtual bool user_read_own(std::istream &in, std::ostream &out);
+-  virtual bool user_write_own(std::ostream &out);
+ };
+-
+ #endif
+--- a/fprovide.cpp
++++ b/fprovide.cpp
+@@ -21,7 +21,6 @@
+ 
+ #include <string.h>
+ #include <binio.h>
+-#include <binfile.h>
+ 
+ #include "fprovide.h"
+ 
+@@ -52,25 +51,7 @@
+ 
+ /***** CProvider_Filesystem *****/
+ 
+-binistream *CProvider_Filesystem::open(std::string filename) const
+-{
+-  binifstream *f = new binifstream(filename);
+-
+-  if(!f) return 0;
+-  if(f->error()) { delete f; return 0; }
+-
+-  // Open all files as little endian with IEEE floats by default
+-  f->setFlag(binio::BigEndian, false); f->setFlag(binio::FloatIEEE);
+-
+-  return f;
+-}
+-
+-void CProvider_Filesystem::close(binistream *f) const
+-{
+-  binifstream *ff = (binifstream *)f;
++/* libadplug patch 0001: no file-system provider (the backend hands the players a memory provider, adplug_c.cpp). */
++binistream *CProvider_Filesystem::open(std::string filename) const { (void)filename; return 0; }
+ 
+-  if(f) {
+-    ff->close();
+-    delete ff;
+-  }
+-}
++void CProvider_Filesystem::close(binistream *f) const { delete f; }
+--- a/herad.cpp
++++ b/herad.cpp
+@@ -138,10 +138,12 @@
+ 	uint16_t count, out_size = u16_unaligned(data);
+ 	uint8_t * src = data;
+ 	uint8_t * dst = out;
++	uint8_t * dend = out + HERAD_MAX_SIZE, * send = data + size;   /* libadplug patch 0001: bounds (the input is padded by 32 zero bytes) */
+ 
+ 	src += 6;
+ 	while (true)
+ 	{
++		if (src > send) return 0;
+ 		// get next bit of the queue
+ 		if (queue == 1)
+ 		{
+@@ -154,7 +156,7 @@
+ 		if (bit)
+ 		{
+ 			// copy next byte of the input to the output
+-			*dst++ = *src++;
++			if (dst >= dend) return 0; *dst++ = *src++;
+ 		}
+ 		else
+ 		{
+@@ -214,7 +216,7 @@
+ 			// copy count bytes at (output + offset) to the output
+ 			while (count--)
+ 			{
+-				*dst = *(dst + offset);
++				if (dst >= dend || dst + offset < out) return 0; *dst = *(dst + offset);
+ 				dst++;
+ 			}
+ 		}
+@@ -228,6 +230,7 @@
+ 	uint16_t count;
+ 	uint8_t * src = data;
+ 	uint8_t * dst = out;
++	uint8_t * dend = out + HERAD_MAX_SIZE, * send = data + size;   /* libadplug patch 0001: bounds (the input is padded by 32 zero bytes) */
+ 	bool done = false;
+ 
+ 	std::memcpy(dst, src, sizeof(uint16_t));
+@@ -236,6 +239,7 @@
+ 	uint8_t bit, bit_p;
+ 	while (true)
+ 	{
++		if (src > send) return 0;
+ 		bit = queue & 1;
+ 		queue >>= 1;
+ 		if (queue == 0)
+@@ -253,7 +257,7 @@
+ 			switch (data[2])
+ 			{
+ 			case 0:
+-				*dst++ = *src++;
++				if (dst >= dend) return 0; *dst++ = *src++;
+ 				break;
+ 			case 1:
+ 				count = 0;
+@@ -295,7 +299,7 @@
+ 				count += 2;
+ 				while (count--)
+ 				{
+-					*dst = *(dst + offset);
++					if (dst >= dend || dst + offset < out) return 0; *dst = *(dst + offset);
+ 					dst++;
+ 				}
+ 				break;
+@@ -317,7 +321,7 @@
+ 				count += 2;
+ 				while (count--)
+ 				{
+-					*dst = *(dst + offset);
++					if (dst >= dend || dst + offset < out) return 0; *dst = *(dst + offset);
+ 					dst++;
+ 				}
+ 				break;
+@@ -345,7 +349,7 @@
+ 				switch (data[3])
+ 				{
+ 				case 0:
+-					*dst++ = *src++;
++					if (dst >= dend) return 0; *dst++ = *src++;
+ 					break;
+ 				case 1:
+ 					count = 0;
+@@ -387,7 +391,7 @@
+ 					count += 2;
+ 					while (count--)
+ 					{
+-						*dst = *(dst + offset);
++						if (dst >= dend || dst + offset < out) return 0; *dst = *(dst + offset);
+ 						dst++;
+ 					}
+ 					break;
+@@ -409,7 +413,7 @@
+ 					count += 2;
+ 					while (count--)
+ 					{
+-						*dst = *(dst + offset);
++						if (dst >= dend || dst + offset < out) return 0; *dst = *(dst + offset);
+ 						dst++;
+ 					}
+ 					break;
+@@ -423,7 +427,7 @@
+ 				switch (data[4])
+ 				{
+ 				case 0:
+-					*dst++ = *src++;
++					if (dst >= dend) return 0; *dst++ = *src++;
+ 					break;
+ 				case 1:
+ 					count = 0;
+@@ -465,7 +469,7 @@
+ 					count += 2;
+ 					while (count--)
+ 					{
+-						*dst = *(dst + offset);
++						if (dst >= dend || dst + offset < out) return 0; *dst = *(dst + offset);
+ 						dst++;
+ 					}
+ 					break;
+@@ -487,7 +491,7 @@
+ 					count += 2;
+ 					while (count--)
+ 					{
+-						*dst = *(dst + offset);
++						if (dst >= dend || dst + offset < out) return 0; *dst = *(dst + offset);
+ 						dst++;
+ 					}
+ 					break;
+@@ -613,7 +617,8 @@
+ 		return false;
+ 	}
+ 	// Read entire file into memory
+-	uint8_t * data = new uint8_t[size];
++	uint8_t * data = new uint8_t[size + 32];   // libadplug patch 0001: 32 zero bytes of padding for the decompressors
++	memset(data, 0, size + 32);
+ 	f->readString((char *)data, size);
+ 	fp.close(f);
+ 	// Detect compression
+@@ -883,6 +888,7 @@
+ 		if (mp < 0 || mp >= HERAD_INST_SIZE - 4)
+ 			return; // if not in range, skip note
+ 		chn[ch].playprog = inst[chn[ch].program].keymap.index[mp];
++		if (chn[ch].playprog >= nInsts) return;   // libadplug patch 0001: a damaged keymap
+ 		changeProgram(ch, chn[ch].playprog);
+ 	}
+ 	chn[ch].note = note;
+@@ -914,6 +920,7 @@
+ {
+ 	if (prog >= nInsts) // out of index
+ 		return;
++	if (prog >= nInsts) prog = 0;   // libadplug patch 0001: a damaged song names an instrument that is not there
+ 	chn[ch].program = prog;
+ 	chn[ch].playprog = prog;
+ 	changeProgram(ch, prog);
+@@ -948,6 +955,7 @@
+  */
+ void CheradPlayer::playNote(uint8_t c, uint8_t note, uint8_t state)
+ {
++	if (chn[c].playprog >= nInsts) return;   // libadplug patch 0001; the key loops below keep key in 0..11
+ 	if (inst[chn[c].playprog].param.mc_transpose != 0)
+ 		macroTranspose(&note, chn[c].playprog);
+ 	note = (note - 24) & 0xFF;
+@@ -971,7 +979,7 @@
+ 			amount_hi = (amount << 3) & 0xFF;
+ 			key -= amount_lo;
+ 
+-			if (key < 0)
++			while (key < 0)
+ 			{
+ 				key += HERAD_NUM_NOTES;
+ 				oct--;
+@@ -990,7 +998,7 @@
+ 			amount_hi = (amount << 3) & 0xFF;
+ 			key += amount_lo;
+ 
+-			if (key >= HERAD_NUM_NOTES)
++			while (key >= HERAD_NUM_NOTES)
+ 			{
+ 				key -= HERAD_NUM_NOTES;
+ 				oct++;
+@@ -1006,7 +1014,7 @@
+ 			amount = HERAD_BEND_CENTER - bend;
+ 			key -= amount / 5;
+ 
+-			if (key < 0)
++			while (key < 0)
+ 			{
+ 				key += HERAD_NUM_NOTES;
+ 				oct--;
+@@ -1024,7 +1032,7 @@
+ 			amount = bend - HERAD_BEND_CENTER;
+ 			key += amount / 5;
+ 
+-			if (key >= HERAD_NUM_NOTES)
++			while (key >= HERAD_NUM_NOTES)
+ 			{
+ 				key -= HERAD_NUM_NOTES;
+ 				oct++;
+@@ -1064,6 +1072,8 @@
+ {
+ 	uint8_t reg, val;
+ 
++	if (i >= nInsts) return;   // libadplug patch 0001
++
+ 	if (v2 && inst[i].param.mode == HERAD_INSTMODE_KMAP)
+ 		return;
+ 
+--- a/hsc.cpp
++++ b/hsc.cpp
+@@ -119,7 +119,7 @@
+       continue;
+     }
+     eff_op = effect & 0x0f;
+-    inst = channel[chan].inst;
++    inst = channel[chan].inst & 0x7F;   // libadplug patch 0001: instr[] has 128 entries
+     if(note)
+       channel[chan].slide = 0;
+ 
+@@ -155,24 +155,24 @@
+     case 0x50:							// set percussion instrument (unimplemented)
+       break;
+     case 0x60:							// set feedback
+-      opl->write(0xc0 + chan, (instr[channel[chan].inst][8] & 1) + (eff_op << 1));
++      opl->write(0xc0 + chan, (instr[channel[chan].inst & 0x7F][8] & 1) + (eff_op << 1));
+       break;
+     case 0xa0:		                    // set carrier volume
+       vol = eff_op << 2;
+-      opl->write(0x43 + op_table[chan], vol | (instr[channel[chan].inst][2] & ~63));
++      opl->write(0x43 + op_table[chan], vol | (instr[channel[chan].inst & 0x7F][2] & ~63));
+       break;
+     case 0xb0:		                    // set modulator volume
+       vol = eff_op << 2;
+       if (instr[inst][8] & 1)
+-	opl->write(0x40 + op_table[chan], vol | (instr[channel[chan].inst][3] & ~63));
++	opl->write(0x40 + op_table[chan], vol | (instr[channel[chan].inst & 0x7F][3] & ~63));
+       else
+ 	opl->write(0x40 + op_table[chan],vol | (instr[inst][3] & ~63));
+       break;
+     case 0xc0:		                    // set instrument volume
+       db = eff_op << 2;
+-      opl->write(0x43 + op_table[chan], db | (instr[channel[chan].inst][2] & ~63));
++      opl->write(0x43 + op_table[chan], db | (instr[channel[chan].inst & 0x7F][2] & ~63));
+       if (instr[inst][8] & 1)
+-	opl->write(0x40 + op_table[chan], db | (instr[channel[chan].inst][3] & ~63));
++	opl->write(0x40 + op_table[chan], db | (instr[channel[chan].inst & 0x7F][3] & ~63));
+       break;
+     case 0xd0: pattbreak++; songpos = eff_op; songend = 1; break;	// position jump
+     case 0xf0:							// set speed
+@@ -307,7 +307,7 @@
+ 
+ void ChscPlayer::setvolume(unsigned char chan, int volc, int volm)
+ {
+-  unsigned char	*ins = instr[channel[chan].inst];
++  unsigned char	*ins = instr[channel[chan].inst & 0x7F];
+   char		op = op_table[chan];
+ 
+   opl->write(0x43 + op,volc | (ins[2] & ~63));
+@@ -319,6 +319,7 @@
+ 
+ void ChscPlayer::setinstr(unsigned char chan, unsigned char insnr)
+ {
++  insnr &= 0x7F;   // libadplug patch 0001: instr[] has 128 entries
+   unsigned char	*ins = instr[insnr];
+   char		op = op_table[chan];
+ 
+--- a/hsp.cpp
++++ b/hsp.cpp
+@@ -42,7 +42,8 @@
+   if(orgsize > 59187) { fp.close(f); return false; }
+ 
+   // load section
+-  cmp = new unsigned char[filesize];
++  cmp = new unsigned char[filesize + 2];   // libadplug patch 0001: the RLE loop reads cmp[i + 1]; an odd size read past the end
++  memset(cmp, 0, filesize + 2);
+   for(i = 0; i < filesize; i++) cmp[i] = f->readInt(1);
+   fp.close(f);
+ 
+--- a/hybrid.cpp
++++ b/hybrid.cpp
+@@ -144,7 +144,10 @@
+ 	// process channels
+ 	for (i=0;i<9;i++)
+ 	{
+-		unsigned char *pos = &tune[0xADE + (hyb.order[hyb.order_pos*9 + i] * 64 * 2) + (patpos * 2)];
++		if (hyb.order + (hyb.order_pos*9 + i) >= tune + tune_size) continue;   // libadplug patch 0001: the order list ends with the file
++		unsigned long poff = 0xADE + (hyb.order[hyb.order_pos*9 + i] * 64 * 2) + (patpos * 2);
++		if (poff + 1 >= tune_size) continue;   // libadplug patch 0001: a damaged order list points outside the file
++		unsigned char *pos = &tune[poff];
+ 		// read event
+ 		unsigned short event = (pos[1] << 8) + pos[0];
+ 
+@@ -154,6 +157,7 @@
+ 
+ 		// calculate variables
+ 		unsigned char  note  =   event >> 9;
++		if (note >= 98) note = 0;   // libadplug patch 0001: hyb_notes has 98 entries
+ 		unsigned char  ins   = ((event & 0x01F0) >> 4);
+ 		unsigned char  slide =   event & 0x000F;
+ 
+--- a/imf.cpp
++++ b/imf.cpp
+@@ -198,13 +198,6 @@
+ 
+ float CimfPlayer::getrate(const std::string &filename, const CFileProvider &fp, binistream *f)
+ {
+-  if(db) {	// Database available
+-    f->seek(0, binio::Set);
+-    CClockRecord *record = (CClockRecord *)db->search(CAdPlugDatabase::CKey(*f));
+-    if (record && record->type == CAdPlugDatabase::CRecord::ClockSpeed)
+-      return record->clock;
+-  }
+-
+   // Otherwise the database is either unavailable, or there's no entry for this file
+   if (fp.extension(filename, ".imf")) return 560.0f;
+   if (fp.extension(filename, ".wlf")) return 700.0f;
+--- a/lds.cpp
++++ b/lds.cpp
+@@ -209,6 +209,8 @@
+ 
+   // handle notes
+   if(!tempo_now) {
++    if(numposi == 0) return false;   // libadplug patch 0001: damaged position list
++    if(posplay >= numposi) posplay = 0;
+     vbreak = false;
+     for(chan = 0; chan < 9; chan++) {
+       c = &channel[chan];
+@@ -565,6 +567,7 @@
+ void CldsPlayer::playsound(int inst_number, int channel_number, int tunehigh)
+ {
+   Channel		*c = &channel[channel_number];		// current channel
++  if(inst_number < 0 || (unsigned)inst_number >= numpatch) return;   // libadplug patch 0001: a damaged song names a patch that is not there
+   SoundBank		*i = &soundbank[inst_number];		// current instrument
+   unsigned int		regnum = op_table[channel_number];	// channel's OPL2 register
+   unsigned char		volcalc, octave;
+--- a/mkj.cpp
++++ b/mkj.cpp
+@@ -98,7 +98,7 @@
+ 
+     opl->write(0xb0 + c, 0);	// key off
+     do {
+-      assert(channel[c].songptr < (maxchannel + 1) * maxnotes);
++      if(channel[c].songptr >= (maxchannel + 1) * maxnotes) channel[c].songptr = 0;   // libadplug patch 0001: was an assert
+       note = songbuf[channel[c].songptr];
+       if(channel[c].songptr - c > maxchannel)
+ 	if(note && note < 250)
+--- a/msc.cpp
++++ b/msc.cpp
+@@ -274,7 +274,7 @@
+ 			
+       // prefix copy mode
+     case 255:
+-      if((int)raw_pos >= dec_dist)
++      if(dec_dist >= 0 && (int)raw_pos >= dec_dist)   // libadplug patch 0001: a negative distance read past the block
+ 	octet = raw_data [raw_pos - dec_dist];
+       else {
+ 	AdPlug_LogWrite("error! read before raw_data buffer.\n");
+@@ -305,6 +305,7 @@
+     if (output != NULL)
+       *output = octet;
+ 			
++    if (raw_pos >= block_len) return false;   // libadplug patch 0001: a damaged block decodes past its length
+     raw_data [raw_pos++] = octet;
+     break;
+   }; // decode pass
+--- a/mus.cpp
++++ b/mus.cpp
+@@ -398,7 +398,7 @@
+ 		{
+ 			/* unknown format ... skip all the XOR message */
+ 			pos -= 2;
+-			while (data[pos++] != EOX_BYTE);
++			while (pos < dataSize && data[pos++] != EOX_BYTE);   // libadplug patch 0001: bounded
+ 		}
+ 		else
+ 		{
+--- a/player.cpp
++++ b/player.cpp
+@@ -20,7 +20,6 @@
+  */
+ 
+ #include "player.h"
+-#include "adplug.h"
+ #include "silentopl.h"
+ 
+ /***** CPlayer *****/
+@@ -32,7 +31,7 @@
+   {0x00, 0x01, 0x02, 0x08, 0x09, 0x0a, 0x10, 0x11, 0x12};
+ 
+ CPlayer::CPlayer(Copl *newopl)
+-  : opl(newopl), db(CAdPlug::database)
++  : opl(newopl), db(0)
+ {
+ }
+ 
+--- a/plx.cpp
++++ b/plx.cpp
+@@ -192,9 +192,8 @@
+ 
+ 	if(flags & (1 << 3)) {		// Set note
+ 	  unsigned char note = song->readInt(1);
+-	  assert(note % 2 == 0);	// Must be divisible by 2
+-	  note /= 2;
+-	  assert(note < 96);
++	  note /= 2;   // libadplug patch 0001: the original asserted that the byte is even and below 192; a damaged file aborted the player
++	  if (note >= 96) note = 95;
+ 	  freq = frequency[note];
+ 	}
+ 
+--- a/protrack.cpp
++++ b/protrack.cpp
+@@ -486,17 +486,19 @@
+    * has been detected.
+    */
+ {
++  if(!length) { songend = 1; return false; }   // libadplug patch 0001: damaged orders (empty list, jump or restart past the end)
+   if(ord < length) {
+     while(order[ord] >= JUMPMARKER) {	// jump to order
+       unsigned long neword = order[ord] - JUMPMARKER;
+ 
+       if(neword <= ord) songend = 1;
+       if(neword == ord) return false;
++      if(neword >= length) { songend = 1; ord = 0; return false; }
+       ord = neword;
+     }
+   } else {
+     songend = 1;
+-    ord = restartpos;
++    ord = restartpos < length ? restartpos : 0;
+   }
+ 
+   return true;
+--- a/sixdepack.cpp
++++ b/sixdepack.cpp
+@@ -24,19 +24,18 @@
+ 
+ unsigned short Sixdepak::bitvalue(unsigned short bit)
+ {
+-    assert(bit < copybits(COPYRANGES - 1));
+-    return 1 << bit;
++    return 1 << (bit & 15);   // libadplug patch 0001: was an assert (bit < 14)
+ }
+ 
+ unsigned short Sixdepak::copybits(unsigned short range)
+ {
+-    assert(range < COPYRANGES);
++    if (range >= COPYRANGES) range = COPYRANGES - 1;   // libadplug patch 0001: was an assert
+     return 2 * range + 4; // 4, 6, 8, 10, 12, 14
+ }
+ 
+ unsigned short Sixdepak::copymin(unsigned short range)
+ {
+-    assert(range < COPYRANGES);
++    if (range >= COPYRANGES) range = COPYRANGES - 1;   // libadplug patch 0001: was an assert
+     /*
+     if (range > 0 )
+         return bitvalue(copybits(range - 1)) + copymin(range - 1);
+--- a/strnlen.h
++++ b/strnlen.h
+@@ -36,25 +36,8 @@
+ 3. function template from this header.
+ */
+ 
+-#define __STDC_WANT_LIB_EXT1__ 1
++/* libadplug patch 0001: the target libc (picolibc) has strnlen(); the original defined __STDC_WANT_LIB_EXT1__ here, in the middle of a
++   translation unit, which breaks the libc headers included after it. */
+ #include <string.h>
+ 
+-#ifndef strnlen
+-#ifndef strnlen_s
+-template <class Char>
+-size_t strnlen_s(const Char *s, size_t size)
+-{
+-	size_t i = 0;
+-	while (i < size && s[i]) i++;
+-	return i;
+-}
+-#endif // strnlen_s
+-
+-template <class Char>
+-static inline size_t strnlen(const Char *s, size_t size)
+-{
+-	return strnlen_s(s, size);
+-}
+-#endif // strnlen
+-
+ #endif // ADPLUG_STRNLEN_H
+--- a/unlzh.c
++++ b/unlzh.c
+@@ -149,8 +149,7 @@
+ 	start[1] = 0;
+ 	for (i = 1; i <= 16; i++)
+ 		start[i + 1] = start[i] + (count[i] << (16 - i));
+-	if ((start[17] & 0xffff) != 0)
+-		printf("Bad table\n");
++	/* libadplug patch 0001: the original printed "Bad table" here and went on (an incomplete code is legal for a one-symbol table); no console output */
+ 
+ 	jutbits = 16 - tablebits;
+ 	for (i = 1; i <= (unsigned)tablebits; i++) {
+@@ -174,8 +173,9 @@
+ 		if ((len = bitlen[ch]) == 0) continue;
+ 		nextcode = start[len] + weight[len];
+ 		if (len <= (unsigned)tablebits) {
+-			if ((unsigned) 1 << tablebits < nextcode)
+-				printf("Bad table\n");
++			if ((unsigned) 1 << tablebits < nextcode) {
++				return;   /* libadplug patch 0001: the loop below wrote past table[] */
++			}
+ 			for (i = start[len]; i < nextcode; i++) table[i] = ch;
+ 		} else {
+ 			k = start[len];
+@@ -183,6 +183,7 @@
+ 			i = len - tablebits;
+ 			while (i != 0) {
+ 				if (*p == 0) {
++					if (avail >= 2 * (unsigned)NC - 1) return;   /* libadplug patch 0001: the tree of a damaged table outgrew left[] / right[] */
+ 					right[avail] = left[avail] = 0;
+ 					*p = avail++;
+ 				}
+@@ -217,8 +218,8 @@
+ 			if (c == 7) {
+ 				mask = (unsigned) 1 << (BITBUFSIZ - 1 - 3);
+ 				while (mask & bitbuf) {	 mask >>= 1;  c++;	}
+-				if (16 < c)
+-					printf("Bad table\n");
++				if (16 < c) c = 16;   /* libadplug patch 0001: the original printed "Bad table" and went on (c indexed past pt_len[]) */
++
+ 			}
+ 			fillbuf((c < 7) ? 3 : c - 3);
+ 			pt_len[i++] = c;
+@@ -238,6 +239,7 @@
+ 	unsigned mask;
+ 
+ 	n = getbits(CBIT);
++	if (n > NC) n = NC;   /* libadplug patch 0001: damaged input wrote past c_len[] */
+ 	if (n == 0) {
+ 		c = getbits(CBIT);
+ 		for (i = 0; i < NC; i++) c_len[i] = 0;
+@@ -259,8 +261,9 @@
+ 				if		(c == 0) c = 1;
+ 				else if (c == 1) c = getbits(4) + 3;
+ 				else			 c = getbits(CBIT) + 20;
+-				while (--c >= 0) c_len[i++] = 0;
+-			} else c_len[i++] = c - 2;
++				while (--c >= 0 && i < NC) c_len[i++] = 0;
++			} else if (i < NC) c_len[i++] = c - 2;
++			else break;   /* libadplug patch 0001 */
+ 		}
+ 		while (i < NC) c_len[i++] = 0;
+ 		make_table(NC, c_len, 12, c_table);
+@@ -414,7 +417,7 @@
+ 	output_buffer = (unsigned char *)dest;
+ 	output_buffer_idx = 0;
+ 
+-	size_unpacked = *(uint32_t *)(input_buffer + input_buffer_idx);
++	memcpy(&size_unpacked, input_buffer + input_buffer_idx, sizeof size_unpacked);   /* libadplug patch 0001: the 4 bytes are not aligned (RISC-V faults) */
+ 	input_buffer_idx += sizeof(uint32_t);
+ 
+ 	if (ultra) {
+--- a/xsm.cpp
++++ b/xsm.cpp
+@@ -126,6 +126,7 @@
+ 
+ void CxsmPlayer::play_note(int c, int note, int octv)
+ {
++  if (note < 0 || note > 11) note = 0;   // libadplug patch 0001: note_table has 12 entries
+   int freq = note_table[note];
+ 
+   if(!note && !octv) freq = 0;

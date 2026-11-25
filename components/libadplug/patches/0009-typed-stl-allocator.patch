@@ -1,0 +1,190 @@
+diff --git a/components/libadplug/adplug/adp_alloc.h b/components/libadplug/adplug/adp_alloc.h
+new file mode 100644
+index 0000000..d3d7bb2
+--- /dev/null
++++ b/components/libadplug/adplug/adp_alloc.h
+@@ -0,0 +1,23 @@
++/* libadplug patch 0009: the STL containers of the players use their own allocator type (so their template instantiations are never merged with
++ * another translation unit's std::vector<T> that allocates with the toolchain's operator new, which would free tracked memory the wrong way).
++ * It allocates through adplug_c.cpp's per-handle list (caps, longjmp on failure, freed when a hostile file is abandoned). */
++#ifndef ADP_ALLOC_H
++#define ADP_ALLOC_H
++#include <stddef.h>
++#include <deque>
++#include <stack>
++#include <vector>
++extern "C" void *adp_raw_alloc(size_t n);
++extern "C" void adp_raw_free(void *p);
++template <class T> struct adp_std_alloc {
++    typedef T value_type;
++    adp_std_alloc() noexcept {}
++    template <class U> adp_std_alloc(const adp_std_alloc<U> &) noexcept {}
++    T *allocate(size_t n) { return (T *)adp_raw_alloc(n > (size_t)0x7FFFFFFF / sizeof(T) ? (size_t)-1 : n * sizeof(T)); }
++    void deallocate(T *p, size_t) noexcept { adp_raw_free(p); }
++};
++template <class T, class U> bool operator==(const adp_std_alloc<T> &, const adp_std_alloc<U> &) { return true; }
++template <class T, class U> bool operator!=(const adp_std_alloc<T> &, const adp_std_alloc<U> &) { return false; }
++#define ADP_VECTOR(T) std::vector<T, adp_std_alloc<T> >
++#define ADP_STACK(T) std::stack<T, std::deque<T, adp_std_alloc<T> > >
++#endif
+diff --git a/components/libadplug/adplug/cmfmcsop.h b/components/libadplug/adplug/cmfmcsop.h
+index bcbc4a2..11bf8c3 100644
+--- a/components/libadplug/adplug/cmfmcsop.h
++++ b/components/libadplug/adplug/cmfmcsop.h
+@@ -22,6 +22,7 @@
+ #define H_ADPLUG_CMFMACSOPERAPLAYER
+ 
+ #include <vector>
++#include "adp_alloc.h"
+ #include <stdint.h>
+ #include "player.h"
+ 
+@@ -79,7 +80,7 @@ public:
+ 		uint8_t pitch;
+ 	};
+ 	
+-	typedef std::vector<NoteEvent> Pattern;
++	typedef ADP_VECTOR(NoteEvent) Pattern;
+ 
+ 	float   speedRowsPerSec;
+ 	bool    rhythmMode;
+@@ -89,8 +90,8 @@ public:
+ 	uint16_t patternOrder[99];
+ 	int      nrOfOrders;
+ 
+-	std::vector<Instrument> instruments;
+-	std::vector<Pattern> patterns;
++	ADP_VECTOR(Instrument) instruments;
++	ADP_VECTOR(Pattern) patterns;
+ 	
+ 	unsigned int currentOrderIndex;
+ 	unsigned int currentRow;
+diff --git a/components/libadplug/adplug/composer.h b/components/libadplug/adplug/composer.h
+index d0f222e..aac7723 100644
+--- a/components/libadplug/adplug/composer.h
++++ b/components/libadplug/adplug/composer.h
+@@ -25,6 +25,7 @@
+ #define H_VISUALCOMPOSER
+ 
+ #include <vector>
++#include "adp_alloc.h"
+ #include <string>
+ 
+ #include "player.h"
+@@ -82,7 +83,7 @@ public:
+         char     name[INS_MAX_NAME_SIZE];
+     } SInstrumentName;
+ 
+-    typedef std::vector<SInstrumentName> TInstrumentNames;
++    typedef ADP_VECTOR(SInstrumentName) TInstrumentNames;
+ 
+     typedef struct
+     {
+@@ -205,11 +206,11 @@ private:
+     };
+ 
+     typedef uint16_t const *             TUint16ConstPtr;
+-    typedef std::vector<SInstrument>     TInstrumentList;
+-    typedef std::vector<TUint16ConstPtr> TUint16PtrVector;
+-    typedef std::vector<int16_t>         TInt16Vector;
+-    typedef std::vector<uint8_t>         TUInt8Vector;
+-    typedef std::vector<bool>            TBoolVector;
++    typedef ADP_VECTOR(SInstrument) TInstrumentList;
++    typedef ADP_VECTOR(TUint16ConstPtr) TUint16PtrVector;
++    typedef ADP_VECTOR(int16_t) TInt16Vector;
++    typedef ADP_VECTOR(uint8_t) TUInt8Vector;
++    typedef ADP_VECTOR(bool) TBoolVector;
+ 
+     TUint16ConstPtr   mpOldFNumFreqPtr;
+     TInstrumentList   mInstrumentList;
+diff --git a/components/libadplug/adplug/rol.h b/components/libadplug/adplug/rol.h
+index e936d70..ed6556f 100644
+--- a/components/libadplug/adplug/rol.h
++++ b/components/libadplug/adplug/rol.h
+@@ -22,6 +22,7 @@
+ #define H_ROLPLAYER
+ 
+ #include <vector>
++#include "adp_alloc.h"
+ #include <string>
+ 
+ #include "composer.h"
+@@ -112,10 +113,10 @@ private:
+         float    variation;
+     } SPitchEvent;
+ 
+-    typedef std::vector<SNoteEvent>       TNoteEvents;
+-    typedef std::vector<SInstrumentEvent> TInstrumentEvents;
+-    typedef std::vector<SVolumeEvent>     TVolumeEvents;
+-    typedef std::vector<SPitchEvent>      TPitchEvents;
++    typedef ADP_VECTOR(SNoteEvent) TNoteEvents;
++    typedef ADP_VECTOR(SInstrumentEvent) TInstrumentEvents;
++    typedef ADP_VECTOR(SVolumeEvent) TVolumeEvents;
++    typedef ADP_VECTOR(SPitchEvent) TPitchEvents;
+ 
+ #define BIT_POS(pos) (1<<pos)
+ 
+@@ -182,9 +183,9 @@ private:
+     void SetPitch  (int const voice, float const variation);
+     void SetRefresh(float const multiplier);
+ 
+-    typedef std::vector<STempoEvent>     TTempoEvents;
+-    typedef std::vector<CVoiceData>      TVoiceData;
+-    typedef std::vector<std::string>     TStringVector;
++    typedef ADP_VECTOR(STempoEvent) TTempoEvents;
++    typedef ADP_VECTOR(CVoiceData) TVoiceData;
++    typedef ADP_VECTOR(std::string) TStringVector;
+ 
+     SRolHeader      * mpROLHeader;
+     TTempoEvents      mTempoEvents;
+diff --git a/components/libadplug/adplug/u6m.cpp b/components/libadplug/adplug/u6m.cpp
+index 300d3b6..7b35abe 100644
+--- a/components/libadplug/adplug/u6m.cpp
++++ b/components/libadplug/adplug/u6m.cpp
+@@ -208,7 +208,7 @@ bool Cu6mPlayer::lzw_decompress(Cu6mPlayer::data_block source, Cu6mPlayer::data_
+   int next_free_codeword = 0x102;
+   int dictionary_size = 0x200;
+   MyDict dictionary = MyDict();
+-  std::stack<unsigned char> root_stack;
++  ADP_STACK(unsigned char) root_stack;
+ 
+   size_t bytes_written = 0;
+ 
+@@ -371,7 +371,7 @@ bool Cu6mPlayer::output_root(unsigned char root, data_block& destination,
+ 
+ 
+ // output the string represented by a codeword
+-void Cu6mPlayer::get_string(int codeword, Cu6mPlayer::MyDict& dictionary, std::stack<unsigned char>& root_stack)
++void Cu6mPlayer::get_string(int codeword, Cu6mPlayer::MyDict& dictionary, ADP_STACK(unsigned char)& root_stack)
+ {
+   unsigned char root;
+   int current_codeword;
+diff --git a/components/libadplug/adplug/u6m.h b/components/libadplug/adplug/u6m.h
+index 951149e..7ca516e 100644
+--- a/components/libadplug/adplug/u6m.h
++++ b/components/libadplug/adplug/u6m.h
+@@ -21,6 +21,7 @@
+  */
+ 
+ #include <stack>
++#include "adp_alloc.h"
+ 
+ #include "player.h"
+ 
+@@ -109,7 +110,7 @@ class Cu6mPlayer: public CPlayer
+   size_t loop_position;       // position of the loop point
+   int read_delay;             // delay (in timer ticks) before further song data is read
+   unsigned long cmd_total = 0; // libadplug patch 0006: commands run since rewind (a hostile song ran ~100k per tick, 120k ticks)
+-  std::stack<subsong_info> subsong_stack;
++  ADP_STACK(subsong_info) subsong_stack;
+ 
+   size_t instrument_offsets[9]; // offsets of the adlib instrument data
+   // vibrato ("vb")
+@@ -163,6 +164,6 @@ class Cu6mPlayer: public CPlayer
+   bool lzw_decompress(data_block source, data_block dest);
+   int get_next_codeword(unsigned long& bits_read, data_block& source, int codeword_size);
+   bool output_root(unsigned char root, data_block& destination, size_t& position);
+-  void get_string(int codeword, MyDict& dictionary, std::stack<unsigned char>& root_stack);
++  void get_string(int codeword, MyDict& dictionary, ADP_STACK(unsigned char)& root_stack);
+ };
+ 

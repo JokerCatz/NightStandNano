@@ -1,0 +1,5 @@
+# fmopl's and unlzh's zero-initialised statics (tables built at the first chip: 33 KB; the LZH window: 46 KB): PSRAM (compiled with -msmall-data-limit=0)
+[mapping:adplug_extram_bss]
+archive: liblibadplug.a
+entries:
+    * (extram_bss)

@@ -1,0 +1,5 @@
+# the two 256-entry pan tables and the wave-table pointer: zero-initialised statics go to PSRAM (compiled with -msmall-data-limit=0)
+[mapping:hvl_extram_bss]
+archive: liblibhvl.a
+entries:
+    * (extram_bss)

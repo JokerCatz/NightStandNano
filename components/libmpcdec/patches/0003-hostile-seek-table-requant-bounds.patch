@@ -1,0 +1,187 @@
+diff --git a/components/libmpcdec/libmpcdec/internal.h b/components/libmpcdec/libmpcdec/internal.h
+index 48d78c1..5a77948 100755
+--- a/components/libmpcdec/libmpcdec/internal.h
++++ b/components/libmpcdec/libmpcdec/internal.h
+@@ -75,6 +75,7 @@ struct mpc_demux_t {
+ 	mpc_seek_t * seek_table;
+ 	mpc_uint_t seek_pwr; /// distance between 2 frames in seek_table = 2^seek_pwr
+ 	mpc_uint32_t seek_table_size; /// used size in seek_table
++	mpc_uint32_t seek_table_cap; /// JC 0003: entries allocated (the appends are bounded by it)
+ 
+ 	// chapters
+ 	mpc_seek_t chap_pos; /// supposed position of the first chapter block
+diff --git a/components/libmpcdec/libmpcdec/mpc_decoder.c b/components/libmpcdec/libmpcdec/mpc_decoder.c
+index 609082f..904b693 100755
+--- a/components/libmpcdec/libmpcdec/mpc_decoder.c
++++ b/components/libmpcdec/libmpcdec/mpc_decoder.c
+@@ -363,6 +363,9 @@ void mpc_decoder_read_bitstream_sv7(mpc_decoder * d, mpc_bits_reader * r)
+ 
+ 		idx   = mpc_bits_huff_lut(r, & mpc_HuffHdr);
+ 		d->Res_R[n] = (idx!=4) ? d->Res_R[n - 1] + idx : (int) mpc_bits_read(r, 4);
++		/* JC 0003: Cc[] and Dc[] hold -1..17 */
++		if (d->Res_L[n] < -1 || d->Res_L[n] > 17) d->Res_L[n] = 0;
++		if (d->Res_R[n] < -1 || d->Res_R[n] > 17) d->Res_R[n] = 0;
+ 
+ 		if (!(d->Res_L[n] == 0 && d->Res_R[n] == 0)) {
+ 			if (d->ms)
+diff --git a/components/libmpcdec/libmpcdec/mpc_demux.c b/components/libmpcdec/libmpcdec/mpc_demux.c
+index 63e58e6..adcdf8f 100755
+--- a/components/libmpcdec/libmpcdec/mpc_demux.c
++++ b/components/libmpcdec/libmpcdec/mpc_demux.c
+@@ -265,25 +265,39 @@ static mpc_status mpc_demux_seek_init(mpc_demux * d)
+ 	d->seek_table = malloc((size_t)(seek_table_size * sizeof(mpc_seek_t)));
+ 	if (d->seek_table == 0)
+ 		return MPC_STATUS_FAIL;
++	d->seek_table_cap = (mpc_uint32_t) seek_table_size;
+ 	d->seek_table[0] = (mpc_seek_t)mpc_demux_pos(d);
+ 	d->seek_table_size = 1;
+ 
+ 	return MPC_STATUS_OK;
+ }
+ 
+-static mpc_status mpc_demux_ST(mpc_demux * d)
++/* JC 0003: the table is parsed from a padded private copy of the block (block_size bytes + 16 bytes of 0x01), so the varints and the
++ * Golomb zero-run cannot run past the block; a table that does not fit its block is dropped (no table = the generic one is built). */
++static mpc_status mpc_demux_ST(mpc_demux * d, mpc_uint32_t block_size)
+ {
+ 	mpc_uint64_t tmp;
+ 	mpc_seek_t * table, last[2];
+-	mpc_bits_reader r = d->bits_reader;
++	mpc_bits_reader r;
+ 	mpc_uint_t i, diff_pwr = 0, mask;
+ 	mpc_uint32_t file_table_size;
++	mpc_uint8_t * copy, * end;
+ 
+ 	if (d->seek_table != 0)
+ 		return MPC_STATUS_OK;
++	if (block_size > DEMUX_BUFFER_SIZE)
++		return MPC_STATUS_OK;
++	copy = malloc((size_t) block_size + 16);
++	if (copy == 0)
++		return MPC_STATUS_OK;
++	memcpy(copy, d->bits_reader.buff, block_size);
++	memset(copy + block_size, 1, 16);
++	end = copy + block_size;
++	r.buff = copy;
++	r.count = d->bits_reader.count;
+ 
+ 	mpc_bits_get_size(&r, &tmp);
+-	file_table_size = (mpc_seek_t) tmp;
++	file_table_size = (tmp > 0xFFFFFFFFu) ? 0xFFFFFFFFu : (mpc_uint32_t) tmp;
+ 	d->seek_pwr = d->si.block_pwr + mpc_bits_read(&r, 4);
+ 
+ 	tmp = 2 + d->si.samples / (MPC_FRAME_LENGTH << d->seek_pwr);
+@@ -292,17 +306,24 @@ static mpc_status mpc_demux_ST(mpc_demux * d)
+ 		diff_pwr++;
+ 		tmp = 2 + d->si.samples / (MPC_FRAME_LENGTH << d->seek_pwr);
+ 	}
++	if (diff_pwr > 24 || d->seek_pwr > 24 || file_table_size < 1 || r.buff > end)
++		goto drop;
+ 	if ((file_table_size >> diff_pwr) > tmp)
+ 		file_table_size = tmp << diff_pwr;
+ 	d->seek_table = malloc((size_t) (tmp * sizeof(mpc_seek_t)));
++	if (d->seek_table == 0)
++		goto drop;
++	d->seek_table_cap = (mpc_uint32_t) tmp;
+ 	d->seek_table_size = (file_table_size + ((1 << diff_pwr) - 1)) >> diff_pwr;
+ 
+ 	table = d->seek_table;
+ 	mpc_bits_get_size(&r, &tmp);
+ 	table[0] = last[0] = (mpc_seek_t) (tmp + d->si.header_position) * 8;
+ 
+-	if (d->seek_table_size == 1)
++	if (d->seek_table_size == 1) {
++		free(copy);
+ 		return MPC_STATUS_OK;
++	}
+ 
+ 	mpc_bits_get_size(&r, &tmp);
+ 	last[1] = (mpc_seek_t) (tmp + d->si.header_position) * 8;
+@@ -310,7 +331,10 @@ static mpc_status mpc_demux_ST(mpc_demux * d)
+ 
+ 	mask = (1 << diff_pwr) - 1;
+ 	for (i = 2; i < file_table_size; i++) {
+-		int code = mpc_bits_golomb_dec(&r, 12);
++		int code;
++		if (r.buff > end)
++			goto drop;
++		code = mpc_bits_golomb_dec(&r, 12);
+ 		if (code & 1)
+ 			code = -(code & (-1 << 1));
+ 		code <<= 2;
+@@ -318,6 +342,16 @@ static mpc_status mpc_demux_ST(mpc_demux * d)
+ 		if ((i & mask) == 0)
+ 			table[i >> diff_pwr] = last[i & 1];
+ 	}
++	if (r.buff > end)
++		goto drop;
++	free(copy);
++	return MPC_STATUS_OK;
++drop:
++	free(copy);
++	free(d->seek_table);
++	d->seek_table = 0;
++	d->seek_table_size = 0;
++	d->seek_table_cap = 0;
+ 	return MPC_STATUS_OK;
+ }
+ 
+@@ -337,7 +371,7 @@ static mpc_status mpc_demux_SP(mpc_demux * d, int size, int block_size)
+ 		d->chap_nb = -1;
+ 		if (mpc_demux_fill(d, (mpc_uint32_t) b.size, 0) < b.size)
+ 			return MPC_STATUS_FAIL;
+-		MPC_AUTO_FAIL( mpc_demux_ST(d) );
++		MPC_AUTO_FAIL( mpc_demux_ST(d, (mpc_uint32_t) b.size) );
+ 	}
+ 	return mpc_demux_seek(d, cur, 11 + block_size);
+ }
+@@ -525,7 +559,7 @@ static mpc_status mpc_demux_header(mpc_demux * d)
+ 			} else if (memcmp(b.key, "SO", 2) == 0) {
+ 				MPC_AUTO_FAIL( mpc_demux_SP(d, size, (mpc_uint32_t) b.size) );
+ 			} else if (memcmp(b.key, "ST", 2) == 0) {
+-				MPC_AUTO_FAIL( mpc_demux_ST(d) );
++				MPC_AUTO_FAIL( mpc_demux_ST(d, (mpc_uint32_t) b.size) );
+ 			}
+ 			d->bits_reader.buff += b.size;
+ 			size = mpc_bits_get_block(&d->bits_reader, &b);
+@@ -585,7 +619,7 @@ static mpc_status mpc_demux_decode_inner(mpc_demux * d, mpc_frame_info * i)
+ 		if (d->block_frames == 0) {
+ 			mpc_block b = {{0,0},0};
+ 			d->bits_reader.count &= -8;
+-			if (d->d->decoded_samples == (d->seek_table_size << d->seek_pwr) * MPC_FRAME_LENGTH) {
++			if (d->seek_table_size < d->seek_table_cap && d->d->decoded_samples == (d->seek_table_size << d->seek_pwr) * MPC_FRAME_LENGTH) {  /* JC 0003: bounded */
+ 				d->seek_table[d->seek_table_size] = (mpc_seek_t) mpc_demux_pos(d);
+ 				d->seek_table_size ++;
+ 			}
+@@ -618,7 +652,7 @@ static mpc_status mpc_demux_decode_inner(mpc_demux * d, mpc_frame_info * i)
+ 		if (d->block_bits < 0 || (d->block_frames == 0 && d->block_bits > 7))
+ 			return MPC_STATUS_FAIL;
+ 	} else {
+-		if (d->d->decoded_samples == (d->seek_table_size << d->seek_pwr) * MPC_FRAME_LENGTH) {
++		if (d->seek_table_size < d->seek_table_cap && d->d->decoded_samples == (d->seek_table_size << d->seek_pwr) * MPC_FRAME_LENGTH) {  /* JC 0003: bounded */
+ 			d->seek_table[d->seek_table_size] = (mpc_seek_t) mpc_demux_pos(d);
+ 			d->seek_table_size ++;
+ 		}
+@@ -682,8 +716,12 @@ mpc_status mpc_demux_seek_sample(mpc_demux * d, mpc_uint64_t destsample)
+ 		mpc_demux_seek(d, fpos, 11);
+ 		size = mpc_bits_get_block(&d->bits_reader, &b);
+ 		while(i < fwd) {
++			/* JC 0003: the target is past the last block (a truncated file, or a resume token from another file): stop at the end block / the first bad key
++			 * (the loop spun forever on the zeros after the data) */
++			if (memcmp(b.key, "SE", 2) == 0 || mpc_check_key(b.key) != MPC_STATUS_OK)
++				break;
+ 			if (memcmp(b.key, "AP", 2) == 0) {
+-				if (d->d->decoded_samples == (d->seek_table_size << d->seek_pwr) * MPC_FRAME_LENGTH) {
++				if (d->seek_table_size < d->seek_table_cap && d->d->decoded_samples == (d->seek_table_size << d->seek_pwr) * MPC_FRAME_LENGTH) {  /* JC 0003: bounded */
+ 					d->seek_table[d->seek_table_size] = (mpc_seek_t) mpc_demux_pos(d) - 8 * size;
+ 					d->seek_table_size ++;
+ 				}
+@@ -699,7 +737,7 @@ mpc_status mpc_demux_seek_sample(mpc_demux * d, mpc_uint64_t destsample)
+ 		mpc_decoder_reset_scf(d->d, fwd != 0);
+ 		mpc_demux_seek(d, fpos, 4);
+ 		for( ; i < fwd; i++){
+-			if (d->d->decoded_samples == (d->seek_table_size << d->seek_pwr) * MPC_FRAME_LENGTH) {
++			if (d->seek_table_size < d->seek_table_cap && d->d->decoded_samples == (d->seek_table_size << d->seek_pwr) * MPC_FRAME_LENGTH) {  /* JC 0003: bounded */
+ 				d->seek_table[d->seek_table_size] = (mpc_seek_t) mpc_demux_pos(d);
+ 				d->seek_table_size ++;
+ 			}

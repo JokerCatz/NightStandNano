@@ -1,0 +1,253 @@
+diff --git a/gme/ext/emu2413.c b/gme/ext/emu2413.c
+index d48d2f7..8ea7694 100644
+--- a/gme/ext/emu2413.c
++++ b/gme/ext/emu2413.c
+@@ -30,7 +30,12 @@
+ 
+ #define OPLL_TONE_NUM 3
+ /* clang-format off */
+-static uint8_t default_inst[OPLL_TONE_NUM][(16 + 3) * 8] = {{
++/* RP2350_player: `const` added -- fully-initialized, read-only (only ever
++ * read via OPLL_dumpToPatch()/OPLL_getDefaultPatch(), never written), so
++ * this was a missing `const` costing .data (flash-copied-to-RAM) bytes
++ * for no reason; a real RAM-residency audit finding (task-48), not part
++ * of the tll_table/default_patch/halfsin_table generator work above. */
++static const uint8_t default_inst[OPLL_TONE_NUM][(16 + 3) * 8] = {{
+ 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, // 0: User
+ 0x71,0x61,0x1e,0x17,0xd0,0x78,0x00,0x17, // 1: Violin
+ 0x13,0x41,0x1a,0x0d,0xd8,0xf7,0x23,0x13, // 2: Guitar
+@@ -125,7 +130,15 @@ static uint8_t default_inst[OPLL_TONE_NUM][(16 + 3) * 8] = {{
+ 
+ /* clang-format off */
+ /* exp_table[x] = round((exp2((double)x / 256.0) - 1) * 1024) */
+-static uint16_t exp_table[256] = {
++/* RP2350_player: `const` added -- read-only lookup table (task-48 RAM-
++ * residency audit). This build's optimization level happened to already
++ * promote it to .rodata without an explicit `const` (GCC can prove a
++ * `static` array with internal linkage is never written and place it in
++ * flash on its own); the explicit qualifier makes that a structural
++ * guarantee instead of an optimizer-dependent accident (e.g. a future
++ * -O0 debug build would NOT get this promotion without it). Same
++ * reasoning for pm_table/am_table/eg_step_tables/ml_table below. */
++static const uint16_t exp_table[256] = {
+ 0,    3,    6,    8,    11,   14,   17,   20,   22,   25,   28,   31,   34,   37,   40,   42,
+ 45,   48,   51,   54,   57,   60,   63,   66,   69,   72,   75,   78,   81,   84,   87,   90,
+ 93,   96,   99,   102,  105,  108,  111,  114,  117,  120,  123,  126,  130,  133,  136,  139,
+@@ -164,12 +177,21 @@ static uint16_t fullsin_table[PG_WIDTH] = {
+ };
+ /* clang-format on */
+ 
+-static uint16_t halfsin_table[PG_WIDTH];
+-static uint16_t *wave_table_map[2] = {fullsin_table, halfsin_table};
++/* RP2350_player: halfsin_table used to be `static uint16_t halfsin_table
++ * [PG_WIDTH]` filled at runtime by makeSinTable() below -- 2KB of always-
++ * resident .bss for a KSS/OPLL-only table. Precomputed at build time by
++ * tools/gen_emu2413_tables.py (same formula, parsed straight from this
++ * file's own fullsin_table initializer -- not hand-transcribed) into
++ * ${CMAKE_BINARY_DIR}/generated/emu2413_tables_generated.c, placing the
++ * data in flash (.rodata) instead. See tools/gme-patches/README.md,
++ * 0005-emu2413-flash-tables. */
++extern const uint16_t halfsin_table[PG_WIDTH];
++static const uint16_t *wave_table_map[2] = {fullsin_table, halfsin_table};
+ 
+ /* pitch modulator */
+ /* offset to fnum, rough approximation of 14 cents depth. */
+-static int8_t pm_table[8][8] = {
++/* RP2350_player: `const` added -- see exp_table's comment above. */
++static const int8_t pm_table[8][8] = {
+     {0, 0, 0, 0, 0, 0, 0, 0},    // fnum = 000xxxxxx
+     {0, 0, 1, 0, 0, 0, -1, 0},   // fnum = 001xxxxxx
+     {0, 1, 2, 1, 0, -1, -2, -1}, // fnum = 010xxxxxx
+@@ -183,7 +205,8 @@ static int8_t pm_table[8][8] = {
+ /* amplitude lfo table */
+ /* The following envelop pattern is verified on real YM2413. */
+ /* each element repeates 64 cycles */
+-static uint8_t am_table[210] = {0,  0,  0,  0,  0,  0,  0,  0,  1,  1,  1,  1,  1,  1,  1,  1,  //
++/* RP2350_player: `const` added -- see exp_table's comment above. */
++static const uint8_t am_table[210] = {0,  0,  0,  0,  0,  0,  0,  0,  1,  1,  1,  1,  1,  1,  1,  1,  //
+                                 2,  2,  2,  2,  2,  2,  2,  2,  3,  3,  3,  3,  3,  3,  3,  3,  //
+                                 4,  4,  4,  4,  4,  4,  4,  4,  5,  5,  5,  5,  5,  5,  5,  5,  //
+                                 6,  6,  6,  6,  6,  6,  6,  6,  7,  7,  7,  7,  7,  7,  7,  7,  //
+@@ -201,7 +224,8 @@ static uint8_t am_table[210] = {0,  0,  0,  0,  0,  0,  0,  0,  1,  1,  1,  1,
+ 
+ /* envelope decay increment step table */
+ /* based on andete's research */
+-static uint8_t eg_step_tables[4][8] = {
++/* RP2350_player: `const` added -- see exp_table's comment above. */
++static const uint8_t eg_step_tables[4][8] = {
+     {0, 1, 0, 1, 0, 1, 0, 1},
+     {0, 1, 0, 1, 1, 1, 0, 1},
+     {0, 1, 1, 1, 0, 1, 1, 1},
+@@ -210,7 +234,8 @@ static uint8_t eg_step_tables[4][8] = {
+ 
+ enum __OPLL_EG_STATE { ATTACK, DECAY, SUSTAIN, RELEASE, DAMP, UNKNOWN };
+ 
+-static uint32_t ml_table[16] = {1,     1 * 2, 2 * 2,  3 * 2,  4 * 2,  5 * 2,  6 * 2,  7 * 2,
++/* RP2350_player: `const` added -- see exp_table's comment above. */
++static const uint32_t ml_table[16] = {1,     1 * 2, 2 * 2,  3 * 2,  4 * 2,  5 * 2,  6 * 2,  7 * 2,
+                                 8 * 2, 9 * 2, 10 * 2, 10 * 2, 12 * 2, 12 * 2, 15 * 2, 15 * 2};
+ 
+ #define dB2(x) ((x)*2)
+@@ -217,12 +243,37 @@ enum __OPLL_EG_STATE { ATTACK, DECAY, SUSTAIN, RELEASE, DAMP, UNKNOWN };
+-static double kl_table[16] = {dB2(0.000),  dB2(9.000),  dB2(12.000), dB2(13.875), dB2(15.000), dB2(16.125),
++/* RP2350_player: kl_table's only C reader was makeTllTable(), which this
++ * patch deletes (tll_table is build-time-generated now). The table must
++ * STAY anyway: tools/gen_emu2413_tables.py parses its dB2() literals out
++ * of this file to compute tll_table, keyed on this declaration's exact
++ * text, so deleting or rewording it silently breaks the generator. It is
++ * marked unused because its only consumer is now the build system. See
++ * tools/gme-patches/README.md, 0005-emu2413-flash-tables. */
++__attribute__((unused)) static double kl_table[16] = {dB2(0.000),  dB2(9.000),  dB2(12.000), dB2(13.875), dB2(15.000), dB2(16.125),
+                               dB2(16.875), dB2(17.625), dB2(18.000), dB2(18.750), dB2(19.125), dB2(19.500),
+                               dB2(19.875), dB2(20.250), dB2(20.625), dB2(21.000)};
+ 
+-static uint32_t tll_table[8 * 16][1 << TL_BITS][4];
+-static int32_t rks_table[8 * 2][2];
++/* RP2350_player: tll_table used to be `static uint32_t tll_table[8 * 16]
++ * [1 << TL_BITS][4]` (128KB) filled at runtime by makeTllTable() below --
++ * the single biggest always-resident .bss table in this MCU build,
++ * present the instant this file is linked regardless of whether any
++ * KSS/MSX file is ever opened. Precomputed at build time (same formula,
++ * see tools/gen_emu2413_tables.py) into flash (.rodata) instead of RAM.
++ * See tools/gme-patches/README.md, 0005-emu2413-flash-tables. */
++extern const uint32_t tll_table[8 * 16][1 << TL_BITS][4];
++/* RP2350_player: rks_table (128B) found by the task-48 RAM-residency
++ * audit -- small, but the same category (a runtime-filled lookup table)
++ * as tll_table above, so it gets the same treatment for consistency
++ * (and because "anything that CAN live in flash MUST" doesn't have a
++ * size floor). See tools/gme-patches/README.md, 0005-emu2413-flash-tables. */
++extern const int32_t rks_table[8 * 2][2];
+ 
+ static OPLL_PATCH null_patch = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+-static OPLL_PATCH default_patch[OPLL_TONE_NUM][(16 + 3) * 2];
++/* RP2350_player: default_patch used to be `static OPLL_PATCH default_patch
++ * [OPLL_TONE_NUM][(16 + 3) * 2]` (5.8KB) filled at runtime by
++ * makeDefaultPatch() below (via OPLL_getDefaultPatch/OPLL_dumpToPatch,
++ * unpacking the still-const default_inst[] byte table). Precomputed at
++ * build time into flash instead -- see tools/gme-patches/README.md,
++ * 0005-emu2413-flash-tables. */
++extern const OPLL_PATCH default_patch[OPLL_TONE_NUM][(16 + 3) * 2];
+ 
+ /* don't forget min/max is defined as a macro in stdlib.h of Visual C. */
+ #ifndef min
+@@ -355,60 +406,36 @@ static void makeSinTable(void) {
+     fullsin_table[PG_WIDTH / 2 + x] = 0x8000 | fullsin_table[x];
+   }
+ 
+-  for (x = 0; x < PG_WIDTH / 2; x++)
+-    halfsin_table[x] = fullsin_table[x];
+-
+-  for (x = PG_WIDTH / 2; x < PG_WIDTH; x++)
+-    halfsin_table[x] = 0xfff;
++  /* RP2350_player: halfsin_table's fill (was two loops here, copying
++   * fullsin_table[0..PG_WIDTH/2) then filling the rest with 0xfff) is
++   * gone -- halfsin_table is now build-time-generated `extern const`
++   * data in flash. fullsin_table itself (this table) is untouched: it's
++   * not one of the three big always-resident tables this task's audit
++   * flagged, so it's left runtime-computed exactly as before. See
++   * tools/gme-patches/README.md, 0005-emu2413-flash-tables. */
+ }
+ 
+-static void makeTllTable(void) {
+-
+-  int32_t tmp;
+-  int32_t fnum, block, TL, KL;
+-
+-  for (fnum = 0; fnum < 16; fnum++) {
+-    for (block = 0; block < 8; block++) {
+-      for (TL = 0; TL < 64; TL++) {
+-        for (KL = 0; KL < 4; KL++) {
+-          if (KL == 0) {
+-            tll_table[(block << 4) | fnum][TL][KL] = TL2EG(TL);
+-          } else {
+-            tmp = (int32_t)(kl_table[fnum] - dB2(3.000) * (7 - block));
+-            if (tmp <= 0)
+-              tll_table[(block << 4) | fnum][TL][KL] = TL2EG(TL);
+-            else
+-              tll_table[(block << 4) | fnum][TL][KL] = (uint32_t)((tmp >> (3 - KL)) / EG_STEP) + TL2EG(TL);
+-          }
+-        }
+-      }
+-    }
+-  }
+-}
++/* RP2350_player: makeTllTable() removed -- tll_table is now build-time-
++ * generated `extern const` data in flash (tools/gen_emu2413_tables.py
++ * reimplements this exact formula host-side). See tools/gme-patches/
++ * README.md, 0005-emu2413-flash-tables. */
+ 
+-static void makeRksTable(void) {
+-  int fnum8, block;
+-  for (fnum8 = 0; fnum8 < 2; fnum8++)
+-    for (block = 0; block < 8; block++) {
+-      rks_table[(block << 1) | fnum8][1] = (block << 1) + fnum8;
+-      rks_table[(block << 1) | fnum8][0] = block >> 1;
+-    }
+-}
++/* RP2350_player: makeRksTable() removed -- rks_table is now build-time-
++ * generated `extern const` data in flash (tools/gen_emu2413_tables.py
++ * reimplements this exact formula host-side). See tools/gme-patches/
++ * README.md, 0005-emu2413-flash-tables. */
+ 
+-static void makeDefaultPatch(void) {
+-  int i, j;
+-  for (i = 0; i < OPLL_TONE_NUM; i++)
+-    for (j = 0; j < 19; j++)
+-      OPLL_getDefaultPatch(i, j, &default_patch[i][j * 2]);
+-}
++/* RP2350_player: makeDefaultPatch() removed -- default_patch is now
++ * build-time-generated `extern const` data in flash (tools/
++ * gen_emu2413_tables.py reimplements OPLL_dumpToPatch's bit-unpack
++ * against the still-const default_inst[] table, parsed straight from
++ * this file, not hand-transcribed). See tools/gme-patches/README.md,
++ * 0005-emu2413-flash-tables. */
+ 
+ static uint8_t table_initialized = 0;
+ 
+ static void initializeTables(void) {
+-  makeTllTable();
+-  makeRksTable();
+   makeSinTable();
+-  makeDefaultPatch();
+   table_initialized = 1;
+ }
+ 
+@@ -1451,7 +1478,12 @@ void OPLL_patchToDump(const OPLL_PATCH *patch, uint8_t *dump) {
+   dump[7] = (uint8_t)((patch[1].SL << 4) + patch[1].RR);
+ }
+ 
+-void OPLL_copyPatch(OPLL *opll, int32_t num, OPLL_PATCH *patch) {
++/* RP2350_player: `const` added -- this function only ever reads through
++ * `patch` (memcpy's it into opll->patch[num]); its sole caller as of 0005
++ * (OPLL_resetPatch, below) passes an address into the now-`const`
++ * default_patch[], which the original `OPLL_PATCH *` signature can no
++ * longer accept without discarding the qualifier. */
++void OPLL_copyPatch(OPLL *opll, int32_t num, const OPLL_PATCH *patch) {
+   memcpy(&opll->patch[num], patch, sizeof(OPLL_PATCH));
+ }
+ 
+diff --git a/gme/ext/emu2413.h b/gme/ext/emu2413.h
+index 6dbee11..095b61b 100644
+--- a/gme/ext/emu2413.h
++++ b/gme/ext/emu2413.h
+@@ -34,7 +34,10 @@ typedef struct __OPLL_SLOT {
+   int32_t output[2]; /* output value, latest and previous. */
+ 
+   /* phase generator (pg) */
+-  uint16_t *wave_table; /* wave table */
++  const uint16_t *wave_table; /* wave table -- now points at RP2350_player's
++                                * build-time-generated const halfsin_table
++                                * (or the still-runtime-computed fullsin_table),
++                                * see emu2413.c's wave_table_map. */
+   uint32_t pg_phase;    /* pg phase */
+   uint32_t pg_out;      /* pg output, as index of wave table */
+   uint8_t pg_keep;      /* if 1, pg_phase is preserved when key-on */
+@@ -191,7 +194,7 @@ int16_t OPLL_calc(OPLL *opll);
+ void OPLL_calcStereo(OPLL *opll, int32_t out[2]);
+ 
+ void OPLL_setPatch(OPLL *, const uint8_t *dump, size_t dump_len);
+-void OPLL_copyPatch(OPLL *, int32_t, OPLL_PATCH *);
++void OPLL_copyPatch(OPLL *, int32_t, const OPLL_PATCH *);
+ 
+ /**
+  * Force to refresh.

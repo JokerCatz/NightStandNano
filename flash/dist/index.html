@@ -1,0 +1,206 @@
+<!doctype html>
+<!--
+  NightStand Nano flasher and hardware-setup page (Web Serial). Source of dist/index.html; `npm run build` (see flash/README.md) bundles
+  src/js/main.js and src/css/app.css into ../dist/ and writes the zh-TW text of every data-i18n element into this markup (the pre-load default;
+  strings.js has all three languages). Served at https://jokercatz.github.io/NightStandNano/flash/ next to the control page (../).
+
+  Query parameters:
+    ?lang=en|zh-TW|zh-CN   one load in that language (the select is remembered in localStorage nsn.lang, shared with the control page).
+    ?demo                  a pretend board and a fake flashing run, nothing touches hardware. Extras: &sd=none|unreadable  &spi=mounted|unreadable (a card on the pins of an SPI setting)  &refuse=<reason>
+                           &old (firmware without hw)  &silent  &noise=0  &stop=<0..1> (hang the fake flash there)  &fail=<0..1>  &chip=<name>  &maxbaud=<n> (the bridge cannot change to a faster speed)  &writemaxbaud=<n> (writes above this speed fail)  &tab=hw
+-->
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'">
+<title>NightStand Nano – 燒錄與硬體設定</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="app.css?v=78cf3f5d">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <div class="titlebar">
+      <h1 data-i18n="app.title">NightStand Nano – 燒錄與硬體設定</h1>
+      <label class="lang"><span class="mut" data-i18n="lang.label">語言</span>
+        <select id="lang" aria-label="Language"></select></label>
+    </div>
+    <p class="what" data-i18n="top.what">用這個頁面透過 USB 序列線把韌體燒進 NightStand Nano，並設定它的硬體腳位。不會上傳任何東西：你選的韌體檔只在瀏覽器裡讀取。</p>
+    <nav class="links">
+      <a class="btn primary" id="lnk-releases" href="https://github.com/JokerCatz/NightStandNano/releases/latest" target="_blank" rel="noopener" data-i18n="top.releases">下載韌體（Releases）</a>
+      <a class="btn" id="lnk-control" href="../" data-i18n="top.control">控制頁</a>
+      <a class="btn" id="lnk-readme" href="https://github.com/JokerCatz/NightStandNano#readme" target="_blank" rel="noopener" data-i18n="top.readme">GitHub 上的 README</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <p id="demo-banner" class="banner" hidden data-i18n="warn.demo">示範模式：回答的是假的機器，不會寫入任何硬體。</p>
+  <p id="noserial" class="banner bad" hidden data-i18n="warn.noserial">這個瀏覽器沒有 Web Serial，無法燒錄也無法和機器通訊。請在桌上型電腦（Windows、macOS、Linux、ChromeOS）用 Chrome 或 Edge 開啟本頁。Firefox、Safari 和手機都不行。</p>
+
+  <section class="card" id="conn-card" aria-labelledby="conn-h">
+    <h2 id="conn-h" data-i18n="conn.title">連線</h2>
+    <div class="row">
+      <span class="dot" id="conn-dot"></span>
+      <span id="conn-text" class="grow" data-i18n="conn.off">未連線</span>
+      <button class="primary" id="btn-connect" data-i18n="btn.connect">連線</button>
+      <button id="btn-disconnect" hidden data-i18n="btn.disconnect">中斷連線</button>
+    </div>
+    <p class="mut small" id="conn-fw" hidden></p>
+    <p class="mut small" data-i18n="conn.hint">把機器的 UART 埠（USB 序列橋接晶片，通常是 CH340）接到這台電腦，不是 USB DAC 的那個 USB 埠。連線會讓機器重新啟動，和一般序列監視器一樣。請先關掉其他序列埠程式。</p>
+    <p class="small"><button class="link" id="btn-anyport" data-i18n="btn.anyport">找不到埠？顯示所有序列埠</button></p>
+    <p class="warn small" id="conn-err" hidden></p>
+  </section>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" id="tab-btn-flash" aria-controls="tab-flash" aria-selected="true" data-i18n="tab.flash">燒錄韌體</button>
+    <button role="tab" id="tab-btn-hw" aria-controls="tab-hw" aria-selected="false" data-i18n="tab.hw">硬體設定</button>
+  </div>
+
+  <!-- ===== flash ===== -->
+  <section class="card" id="tab-flash" role="tabpanel" aria-labelledby="tab-btn-flash">
+    <p data-i18n="fl.intro">到 Releases 頁面下載發佈檔，在這裡選取，再連線並寫入。更新會保留你的設定（Wi-Fi、藍牙配對、音量、腳位），除非你勾選清除設定。</p>
+    <details class="help"><summary data-i18n="fl.files.title">要選哪些檔案？</summary><p class="mut" data-i18n="fl.files.body">選一個合併映像 NightStandNano-&lt;版本&gt;-full.bin，或三個檔案：NightStandNano-&lt;版本&gt;-bootloader.bin、NightStandNano-&lt;版本&gt;-partition-table.bin、NightStandNano-&lt;版本&gt;-app.bin（建置原名 bootloader.bin、partition-table.bin、nightstand_nano.bin 也可以）。頁面檢查的是內容，不是檔名。</p></details>
+    <div class="drop" id="fl-drop">
+      <button class="primary" id="fl-pick" data-i18n="fl.pick">選擇韌體檔…</button>
+      <span class="mut" data-i18n="fl.drop">或把檔案拖到這裡</span>
+      <input type="file" id="fl-file" accept=".bin" multiple hidden>
+    </div>
+    <div id="fl-info" aria-live="polite"></div>
+    <div id="fl-opts" hidden>
+      <label class="check"><input type="checkbox" id="fl-erase"> <span data-i18n="fl.erase.label">同時清除設定（NVS）</span></label>
+      <p class="warn small" id="fl-erase-warn" hidden></p>
+      <div id="fl-plan" class="plan small"></div>
+    </div>
+    <details class="help" id="fl-adv">
+      <summary data-i18n="fl.adv.title">進階</summary>
+      <label class="field"><span data-i18n="fl.adv.speed">燒錄速率（baud）</span>
+        <select id="fl-baud"><option value="460800" data-i18n="fl.baud.460800">460800（預設，最快）</option><option value="230400" data-i18n="fl.baud.230400">230400</option><option value="115200" data-i18n="fl.baud.115200">115200（最慢，最穩）</option></select></label>
+      <p class="mut small" data-i18n="fl.adv.hint">保持 460800 就好。如果切換到 460800 失敗，或第一次寫入失敗，頁面會自動用 115200 重試一次。線很長、線材差或 USB 序列轉接器不好、燒錄一直失敗時，可以在這裡選較慢的速率。</p>
+    </details>
+    <div class="row actions">
+      <button class="primary" id="fl-check" disabled data-i18n="btn.fl.check">連線並檢查機器</button>
+      <button class="primary" id="fl-write" hidden disabled data-i18n="btn.fl.write">寫入機器</button>
+      <button id="fl-cancel" hidden data-i18n="btn.fl.cancel">取消</button>
+    </div>
+    <p class="chip ok" id="fl-found" hidden></p>
+    <p class="chip warn small" id="fl-speed-note" hidden></p>
+    <div id="fl-confirm" class="confirm" hidden>
+      <p class="warn" data-i18n="fl.confirm.title">真的要一併清除設定嗎？</p>
+      <p class="small" id="fl-confirm-text"></p>
+      <div class="row"><button class="danger" id="fl-confirm-yes" data-i18n="btn.fl.confirm">是，清除設定並寫入</button><button id="fl-confirm-no" data-i18n="btn.fl.cancel">取消</button></div>
+    </div>
+    <div id="fl-prog" hidden>
+      <progress id="fl-bar" max="1000" value="0"></progress>
+      <p class="small" id="fl-stat" aria-live="polite"></p>
+    </div>
+    <p class="chip bad" id="fl-err" hidden></p>
+    <div id="fl-done" class="done" hidden>
+      <h3 data-i18n="fl.done.title">燒錄完成並已驗證。機器正在重新啟動。</h3>
+      <p class="small"><b data-i18n="fl.done.next">接下來</b></p>
+      <ol class="small"><li data-i18n="fl.done.s1">打開控制頁，用藍牙連上機器。</li><li data-i18n="fl.done.s2">在那裡設定 Wi-Fi（設定，再選 Wi-Fi）。</li><li data-i18n="fl.done.s3">只有板子和預設不同時：到本頁的「硬體設定」分頁設定 SD 卡與 LED 腳位。</li></ol>
+      <p><a class="btn primary" id="fl-open-control" href="../" data-i18n="btn.openControl">打開控制頁</a></p>
+    </div>
+    <details class="help" id="fl-manual"><summary data-i18n="fl.manual.title">如果自動重設沒有用</summary><p class="mut" data-i18n="fl.manual.body">手動進入：按住 BOOT 鍵，點一下 RESET，繼續按住 BOOT 並按「連線並檢查機器」，出現「找到」後再放開 BOOT。也請確認線接在 UART 埠（不是 USB DAC 的埠）、線材能傳資料，而且沒有其他程式開著這個埠。</p></details>
+    <details class="help" id="fl-logbox"><summary>esptool</summary><pre id="fl-log" class="log"></pre></details>
+  </section>
+
+  <!-- ===== hardware ===== -->
+  <section class="card" id="tab-hw" role="tabpanel" aria-labelledby="tab-btn-hw" hidden>
+    <div class="safety" id="hw-safety">
+      <h3 data-i18n="hw.safety.title">更改任何設定前請先讀</h3>
+      <ul class="plain small">
+        <li data-i18n="hw.safety.1">只有你的板子和預設不同時才需要改腳位。</li><li data-i18n="hw.safety.2">腳位錯了，SD 卡或 LED 可能無法運作。機器仍然能開機，你可以回到這裡修正或還原預設值。</li><li data-i18n="hw.safety.3">只能是 3.3 V：絕對不要把 5 V 接到 GPIO。SD 卡是 3.3 V 元件。</li><li data-i18n="hw.safety.4">SD 的 CMD、D0 到 D3 訊號線（SPI 模式是 MOSI、MISO、CS）需要上拉電阻，約 10 kΩ 接到 3.3 V。很多轉接板已經有；裸的卡座沒有。</li><li data-i18n="hw.safety.5">WS2812 LED：短線時 3.3 V 的資料線通常可以用。如果 LED 用 5 V 供電，請加電平轉換（例如 74AHCT125）、資料線串一個約 330 Ω 的電阻、電源兩端並一個約 1000 µF 的電容，並且共地。不同 LED 的顏色順序不一樣。</li>
+      </ul>
+    </div>
+    <p class="mut" id="hw-off" data-i18n="hw.notconn">請先連線機器（上方的「連線」），才能讀取和更改硬體設定。</p>
+    <p class="mut" id="hw-reading" hidden data-i18n="hw.reading">正在讀取設定…</p>
+    <p class="chip bad" id="hw-noanswer" hidden data-i18n="hw.err.noanswer">機器沒有回應 hw 指令（或回應不完整）。NightStand Nano 韌體有在執行嗎？版本夠新、有這個功能嗎？請先燒錄最新的發佈版。</p>
+    <div id="hw-body" hidden>
+      <p class="banner" id="hw-pending" hidden><span data-i18n="hw.pending">已儲存的設定和正在執行的不同。請重新啟動機器來套用。</span></p>
+      <h3 data-i18n="hw.sd.title">SD 卡</h3>
+      <p><span class="chip" id="hw-sd-state"></span> <span class="mut small" id="hw-sd-meta"></span></p>
+      <p class="mut small" id="hw-sd-statenote" hidden data-i18n="hw.sd.statenote">上面的卡片狀態是機器目前實際執行的結果。要讓它用已儲存的腳位，請重新啟動機器。</p>
+      <fieldset class="modes" id="hw-sd-modes">
+        <legend data-i18n="hw.conn.title">SD 卡的接法</legend>
+        <label class="radio"><input type="radio" name="hw-sd-mode" value="sdmmc" id="hw-mode-sdmmc"> <span data-i18n="hw.conn.sdmmc">內建卡座／SDMMC（固定腳位）</span></label>
+        <label class="radio"><input type="radio" name="hw-sd-mode" value="spi" id="hw-mode-spi"> <span data-i18n="hw.conn.spi">自己接線／SPI 模式（腳位自選）</span></label>
+      </fieldset>
+      <div id="hw-sd-sdmmc">
+        <p class="small" data-i18n="hw.mmc.fixed">這顆晶片無法更動 SDMMC 腳位：SD 主機只接得到下面這組腳位，所以只顯示、不能改，只能選匯流排寬度。如果你的卡座接在別的腳位，請改選 SPI 模式。</p>
+        <div class="pins" id="hw-sdmmc-pins"></div>
+        <div class="row">
+          <label class="field"><span data-i18n="hw.width">匯流排寬度</span>
+            <select id="hw-width"><option value="4" data-i18n="hw.width.4">4 位元</option><option value="1" data-i18n="hw.width.1">1 位元（只用 CLK、CMD、D0）</option></select></label>
+        </div>
+      </div>
+      <div id="hw-sd-spi" hidden>
+        <p class="small" data-i18n="hw.spi.intro">填入四條 SPI 線接的 GPIO 編號（任何沒被保留的腳位都可以），並照下表把卡座或 microSD 轉接板接好。</p>
+        <div class="pins" id="hw-spi-pins"></div>
+        <p class="mut small" id="hw-range"></p>
+        <table class="parts wiring">
+          <thead><tr><th data-i18n="hw.wire.col.fw">本機腳位（SPI）</th><th data-i18n="hw.wire.col.card">SD 卡腳位</th><th data-i18n="hw.wire.col.note">備註</th></tr></thead>
+          <tbody>
+            <tr><td>CS</td><td>DAT3 (CD)</td><td data-i18n="hw.wire.cs">接 10 kΩ 上拉電阻到 3.3 V（也避免開機時卡被誤選）</td></tr>
+            <tr><td>MOSI</td><td>CMD</td><td data-i18n="hw.wire.mosi">接 10 kΩ 上拉電阻到 3.3 V</td></tr>
+            <tr><td>MISO</td><td>DAT0</td><td data-i18n="hw.wire.miso">接 10 kΩ 上拉電阻到 3.3 V</td></tr>
+            <tr><td>CLK</td><td>CLK</td><td data-i18n="hw.wire.clk">這條線盡量短</td></tr>
+            <tr><td>3.3 V</td><td>VDD</td><td data-i18n="hw.wire.vdd">只能 3.3 V，絕對不能 5 V。卡座旁放 10 µF 與 0.1 µF 電容</td></tr>
+            <tr><td>GND</td><td>VSS</td><td data-i18n="hw.wire.gnd">和機器共地</td></tr>
+          </tbody>
+        </table>
+        <ul class="plain small">
+          <li data-i18n="hw.spi.note.unused">SPI 模式下韌體不使用 DAT1、DAT2。晶片內建的上拉太弱，手接的線請另外加外部上拉；有些轉接板已經裝好了。</li>
+          <li data-i18n="hw.spi.note.slow">SPI 模式比 SDMMC 較慢。取樣率很高的未壓縮檔案可能跟不上。</li>
+        </ul>
+      </div>
+      <p class="chip warn small" id="hw-powercycle" hidden data-i18n="hw.spi.powercycle">用過 SPI 模式的卡，要回到 SDMMC 模式前可能得先斷電重上電（把卡拔掉再插，或整機斷電再開）才會正常。</p>
+      <ul class="issues small" id="hw-sd-issues"></ul>
+      <p><button class="primary" id="hw-sd-apply" data-i18n="btn.hw.sd.apply">儲存 SD 卡設定</button></p>
+
+      <h3 data-i18n="hw.led.title">狀態 LED（WS2812）</h3>
+      <label class="check"><input type="checkbox" id="hw-led-on"> <span data-i18n="hw.led.on">有接 LED</span></label>
+      <div class="row">
+        <label class="field"><span data-i18n="hw.led.gpio">資料 GPIO</span><input type="number" id="hw-led-gpio" step="1" inputmode="numeric"></label>
+        <label class="field"><span data-i18n="hw.led.order">顏色順序</span><select id="hw-led-order"></select></label>
+        <span class="mut small" id="hw-led-src"></span>
+      </div>
+      <ul class="issues small" id="hw-led-issues"></ul>
+      <p><button class="primary" id="hw-led-apply" data-i18n="btn.hw.led.apply">儲存 LED</button></p>
+
+      <p class="mut small" id="hw-reserved"></p>
+      <p class="small" id="hw-reserved-why" hidden aria-live="polite"></p>
+      <p class="chip" id="hw-result" hidden aria-live="polite"></p>
+      <div class="row actions">
+        <button id="hw-restart" data-i18n="btn.hw.restart">重新啟動機器</button>
+        <button id="hw-defaults" data-i18n="btn.hw.defaults">還原預設值</button>
+        <button id="hw-reread" data-i18n="btn.hw.reread">重新讀取</button>
+      </div>
+      <div id="hw-defaults-ask" class="confirm" hidden>
+        <p class="small" data-i18n="hw.defaults.ask">把 SD 與 LED 腳位改回預設值？（重新啟動後生效。）</p>
+        <div class="row"><button class="danger" id="hw-defaults-yes" data-i18n="btn.hw.defaults.yes">是，還原</button><button id="hw-defaults-no" data-i18n="btn.fl.cancel">取消</button></div>
+      </div>
+      <p class="mut small" id="hw-restarting" hidden data-i18n="hw.restarting">重新啟動中…機器回來後會再讀一次設定。</p>
+    </div>
+  </section>
+
+  <details class="card console" id="console" open>
+    <summary data-i18n="con.title">主控台（診斷用）</summary>
+    <p class="mut small" data-i18n="con.note">機器序列輸出的唯讀記錄（115200 baud），下面可以輸入一行指令（試試 ver 或 hw）。「wifi set」後面的內容在這裡會被隱藏。</p>
+    <pre id="con-log" class="log" tabindex="0" aria-live="off" data-i18n-aria="con.aria"></pre>
+    <form class="row" id="con-form" autocomplete="off">
+      <input type="text" id="con-input" class="grow" spellcheck="false" autocapitalize="off" data-i18n-placeholder="con.placeholder">
+      <button type="submit" id="con-send" data-i18n="btn.con.send">送出</button>
+      <button type="button" id="con-clear" data-i18n="btn.con.clear">清除</button>
+    </form>
+  </details>
+</main>
+
+<footer class="wrap foot mut small">
+  <span id="build-stamp"></span> · <span data-i18n="foot.legal">頁面：LGPL-2.1-or-later。燒錄使用 esptool-js（Apache-2.0）。</span>
+</footer>
+<script src="app.js?v=78cf3f5d"></script>
+</body>
+</html>

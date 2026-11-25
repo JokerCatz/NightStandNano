@@ -1,0 +1,83 @@
+diff --git a/components/libxmp/libxmp/src/filter.c b/components/libxmp/libxmp/src/filter.c
+index ccc2476..94c6ded 100644
+--- a/components/libxmp/libxmp/src/filter.c
++++ b/components/libxmp/libxmp/src/filter.c
+@@ -87,6 +87,54 @@ static const float resonance_table[128] = {
+  * Simple 2-poles resonant filter
+  */
+ #define FREQ_PARAM_MULT (128.0f / (24.0f * 256.0f))
++/* libxmp patch 0009: the cutoff frequency table. The original computed  110.0f * powf(2.0f, (float)cutoff * FREQ_PARAM_MULT + 0.25f)  per call:
++ * a libm powf whose last bit differs between the host (glibc) and the S31 (newlib, with fused multiply-add in the argument), and a soft-double
++ * pow on the board (the float powf macro falls back to pow). The values below are that expression evaluated on the host without fusing. */
++static const float cutoff_hz[256] = {
++	130.812775f, 132.7155f, 134.645889f, 136.604355f, 138.591324f, 140.607162f,
++	142.652359f, 144.72728f, 146.832382f, 148.968109f, 151.134903f, 153.333206f,
++	155.563492f, 157.826218f, 160.121857f, 162.450882f, 164.813782f, 167.21106f,
++	169.643188f, 172.110703f, 174.61412f, 177.153931f, 179.730713f, 182.344955f,
++	184.997208f, 187.688065f, 190.418045f, 193.187744f, 195.997726f, 198.848572f,
++	201.740891f, 204.675278f, 207.652344f, 210.672714f, 213.73703f, 216.845917f,
++	220.0f, 223.199966f, 226.446487f, 229.740219f, 233.081894f, 236.472153f,
++	239.911697f, 243.401321f, 246.941681f, 250.533493f, 254.177597f, 257.874695f,
++	261.625549f, 265.431f, 269.291809f, 273.20871f, 277.182648f, 281.214355f,
++	285.304718f, 289.454559f, 293.664795f, 297.936218f, 302.269806f, 306.666412f,
++	311.126984f, 315.652435f, 320.243713f, 324.901764f, 329.627563f, 334.422119f,
++	339.286377f, 344.221405f, 349.228241f, 354.307861f, 359.461426f, 364.689911f,
++	369.994415f, 375.376129f, 380.836121f, 386.375488f, 391.995453f, 397.697144f,
++	403.481781f, 409.350555f, 415.304718f, 421.345428f, 427.47406f, 433.691833f,
++	440.0f, 446.399994f, 452.892975f, 459.480438f, 466.163849f, 472.944305f,
++	479.823395f, 486.802643f, 493.883362f, 501.066986f, 508.355255f, 515.74939f,
++	523.251099f, 530.862061f, 538.583618f, 546.417419f, 554.365295f, 562.428711f,
++	570.609436f, 578.90918f, 587.32959f, 595.872437f, 604.539673f, 613.332825f,
++	622.253967f, 631.304932f, 640.487427f, 649.803528f, 659.255188f, 668.844238f,
++	678.572754f, 688.442932f, 698.456482f, 708.615723f, 718.922913f, 729.379822f,
++	739.988831f, 750.752319f, 761.672241f, 772.750977f, 783.990967f, 795.394287f,
++	806.963562f, 818.701172f, 830.609436f, 842.690857f, 854.948181f, 867.383667f,
++	880.0f, 892.799988f, 905.78595f, 918.960876f, 932.327698f, 945.888611f,
++	959.64679f, 973.605286f, 987.766724f, 1002.13397f, 1016.71051f, 1031.49878f,
++	1046.5022f, 1061.72412f, 1077.16724f, 1092.83484f, 1108.73059f, 1124.85742f,
++	1141.21887f, 1157.81836f, 1174.65918f, 1191.74487f, 1209.07935f, 1226.66565f,
++	1244.50793f, 1262.60986f, 1280.97485f, 1299.60706f, 1318.51038f, 1337.68848f,
++	1357.14551f, 1376.88586f, 1396.91296f, 1417.23145f, 1437.84583f, 1458.75964f,
++	1479.97766f, 1501.50464f, 1523.34448f, 1545.50195f, 1567.98193f, 1590.78857f,
++	1613.92712f, 1637.40234f, 1661.21887f, 1685.38171f, 1709.89636f, 1734.76733f,
++	1760.0f, 1785.59998f, 1811.57239f, 1837.92175f, 1864.6554f, 1891.77747f,
++	1919.29358f, 1947.21057f, 1975.53357f, 2004.26794f, 2033.42102f, 2062.99805f,
++	2093.00439f, 2123.44824f, 2154.33472f, 2185.66968f, 2217.46118f, 2249.71533f,
++	2282.43774f, 2315.63672f, 2349.3186f, 2383.48975f, 2418.15869f, 2453.33179f,
++	2489.01587f, 2525.21973f, 2561.9502f, 2599.21411f, 2637.02075f, 2675.37744f,
++	2714.29102f, 2753.77173f, 2793.82642f, 2834.46289f, 2875.69165f, 2917.51978f,
++	2959.95532f, 3003.00928f, 3046.68945f, 3091.00391f, 3135.96387f, 3181.57788f,
++	3227.85425f, 3274.80469f, 3322.43848f, 3370.76343f, 3419.79272f, 3469.53516f,
++	3520.0f, 3571.19995f, 3623.14478f, 3675.84351f, 3729.31079f, 3783.55493f,
++	3838.58716f, 3894.42114f, 3951.06714f, 4008.53589f, 4066.84204f, 4125.99609f,
++	4186.00879f, 4246.89648f, 4308.66943f, 4371.33936f, 4434.92236f, 4499.43066f,
++	4564.87549f, 4631.27344f, 4698.63721f, 4766.97949f, 4836.31738f, 4906.66357f,
++	4978.03174f, 5050.43945f, 5123.90039f, 5198.42822f
++};
+ void libxmp_filter_setup(int srate, int cutoff, int res, int *a0, int *b0, int *b1)
+ {
+ 	float fc, fs = (float)srate;
+@@ -97,7 +145,7 @@ void libxmp_filter_setup(int srate, int cutoff, int res, int *a0, int *b0, int *
+ 	CLAMP(cutoff, 0, 255);
+ 	CLAMP(res, 0, 255);
+ 
+-        fc = 110.0f * powf(2.0f, (float)cutoff * FREQ_PARAM_MULT + 0.25f);
++        fc = cutoff_hz[cutoff];
+         if (fc > fs / 2.0f) {
+                 fc = fs / 2.0f;
+ 	}
+diff --git a/components/libxmp/libxmp/src/rng.c b/components/libxmp/libxmp/src/rng.c
+index c592cc5..de3af0a 100644
+--- a/components/libxmp/libxmp/src/rng.c
++++ b/components/libxmp/libxmp/src/rng.c
+@@ -48,7 +48,9 @@ void libxmp_set_random(struct rng_state *rng, unsigned state)
+ 
+ void libxmp_init_random(struct rng_state *rng)
+ {
+-	rng->state = (unsigned) time(NULL);
++	/* libxmp patch 0009: a fixed seed (upstream: time(NULL)). The random LFO / random pan / volume swing of IT and XM then play the same on
++	 * every run and every target, so a checksum of a render is reproducible (the host and board benches differed for random-using modules). */
++	rng->state = 0x2545F491u;
+ 	libxmp_get_random(rng, 0);
+ 	libxmp_get_random(rng, 0);
+ 	libxmp_get_random(rng, 0);

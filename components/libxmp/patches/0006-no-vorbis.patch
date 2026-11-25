@@ -1,0 +1,75 @@
+0006-no-vorbis
+stb_vorbis not built; XM with Ogg samples fails to load
+
+--- a/src/loaders/xm_load.c
++++ b/src/loaders/xm_load.c
+@@ -36,7 +36,6 @@
+ #include "loader.h"
+ #include "xm.h"
+ #ifndef LIBXMP_CORE_PLAYER
+-#include "vorbis.h"
+ #endif
+ 
+ static int xm_test(HIO_HANDLE *, char *, const int);
+@@ -372,57 +371,12 @@
+ 	return 1;
+ }
+ 
++/* JukeDial patch 0007: no Ogg Vorbis samples (OpenMPT .oxm): stb_vorbis (26 KB of flash, a decoder that trusts its input) is not built; an XM that has
++ * one fails to load. */
+ static int oggdec(struct module_data *m, HIO_HANDLE *f, struct xmp_sample *xxs, int len)
+ {
+-	int i, n, ch, rate, ret, flags = 0;
+-	uint8 *data;
+-	int16 *pcm16 = NULL;
+-
+-	if ((data = (uint8 *)calloc(1, len)) == NULL)
+-		return -1;
+-
+-	hio_read32b(f);
+-	if (hio_error(f) != 0 || hio_read(data, 1, len - 4, f) != len - 4) {
+-		free(data);
+-		return -1;
+-	}
+-
+-	n = stb_vorbis_decode_memory(data, len, &ch, &rate, &pcm16);
+-	free(data);
+-
+-	if (n < 0 || ch != 1) {
+-		free(pcm16);
+-		return -1;
+-	}
+-
+-	if ((xxs->flg & XMP_SAMPLE_16BIT) == 0 && n > 0) {
+-		uint8 *pcm = (uint8 *)pcm16;
+-
+-		for (i = 0; i < n; i++) {
+-			pcm[i] = pcm16[i] >> 8;
+-		}
+-		pcm = (uint8 *)realloc(pcm16, n);
+-		if (pcm == NULL) {
+-			free(pcm16);
+-			return -1;
+-		}
+-		pcm16 = (int16 *)pcm;
+-	}
+-	if (xxs->flg & XMP_SAMPLE_STEREO) {
+-		/* OXM stereo is a single channel non-interleaved stream. */
+-		n >>= 1;
+-	}
+-	xxs->len = n;
+-
+-	flags |= SAMPLE_FLAG_NOLOAD;
+-#ifdef WORDS_BIGENDIAN
+-	flags |= SAMPLE_FLAG_BIGEND;
+-#endif
+-
+-	ret = libxmp_load_sample(m, NULL, flags, xxs, pcm16);
+-	free(pcm16);
+-
+-	return ret;
++	(void)m; (void)f; (void)xxs; (void)len;
++	return -1;
+ }
+ #endif
+ 

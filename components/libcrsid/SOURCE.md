@@ -1,0 +1,10 @@
+# libcrsid (cRSID 1.58, C64 SID player)
+
+- Upstream: cRSID 1.58 by Hermit (Mihaly Horvath), CSDb release <https://csdb.dk/release/?id=261057>.
+- Archive: `cRSID-1.58-with-source-code.tar.gz`, <https://csdb.dk/getinternalfile.php/279277/cRSID-1.58-with-source-code.tar.gz>,
+  sha256 `98bc2da927b65ab8781b46dc5341b1113967b0b61aa05406877c0e5dcffa8b9d` (downloaded 2026-11-18 into `.local/downloads/crsid-1.58/`, outside git; read and copied only, nothing built or run from that folder; the hash equals the one the owner's ChipChill project recorded).
+- Licence: the author's "WTF" statement, quoted exactly in `docs/licenses/cRSID-WTF.txt` (do what you want, mention the author). Credit: README licence section. Informal: the author's written confirmation would be safer (docs/tradeoffs.md, CHIP2B).
+- Vendored: `crsid/libcRSID/*` and `crsid/README.txt` from the archive, **with the owner's patches 0002-0004 applied** (the ChipChill project's `crates/libcrsid-sys/vendor/cRSID`, copied as data): one machine per instance instead of globals, `int` sub-tune number, per-voice key-on counter / mute mask / voice tap. Pristine files: `Config.h`, `Optimize.h`, `SID_CombiWaves.h`, `SincWindow.h`, `SID_FilterCurves.h`, `README.txt`. The patches' record is `patches/README.md` (0003, 0004 here; 0001 library-only and 0002 instance are mechanical and large, they live in the owner's ChipChill repo). The owner's equivalence test: the patched build renders the same samples as the pristine 1.58 (hashes of the first seconds of every fixture and of 74 tunes).
+- Not vendored: `host/md5.c` (no licence statement), SDL/GUI/CLI programs, `echo2.prg`, every `.sid` file.
+- `ccs_player.c/.h`: the owner's C API over cRSID (file checks and fixes: v1 header, init address 0, > 255 tunes), the instrument part of the ChipChill shim left out. Allocations: player struct and file copy padded to 1100 B (never internal RAM), the machine is one 70 KB calloc (PSRAM).
+- Build: `-O2 -fwrapv` (the dither LFSR shifts a signed int past its top bit: UBSan flagged it, GCC wraps), `CRSID_OVERSAMPLING_RATIO=2` (cRSID's default is 5; see docs/tradeoffs.md CHIP2B for the numbers). No writable globals.

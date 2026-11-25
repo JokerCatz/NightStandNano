@@ -1,0 +1,24 @@
+diff --git a/gme/Hes_Emu.cpp b/gme/Hes_Emu.cpp
+index 45b4802..3ebd628 100644
+--- a/gme/Hes_Emu.cpp
++++ b/gme/Hes_Emu.cpp
+@@ -301,7 +301,18 @@ void Hes_Emu::cpu_write_( hes_addr_t addr, int data )
+ 
+ 	if ( (unsigned) (addr - adpcm.io_addr) < adpcm.io_size )
+ 	{
+-		time_t t = min( time(), end_time() + 6 );
++		// -- cross-compile fix (RP2350_player, tools/gme-patches/
++		// 0002-hes-cross-compile-fix.patch) -- upstream declares
++		// `time_t t` here (the global C <ctime> type, never included in
++		// this file), a copy/paste slip against the identically-shaped
++		// line above (`hes_time_t t = min( time(), end_time() + 8 );`),
++		// the type this project's arm-none-eabi/newlib-nano cross build
++		// actually needs declared. It builds clean on host libstdc++
++		// (some other transitively-included header already pulls in
++		// <ctime> there) but fails under the ARM toolchain wherever this
++		// file is compiled for that target, so keep this declared as
++		// `hes_time_t`, not `time_t`.
++		hes_time_t t = min( time(), end_time() + 6 );
+ 		adpcm.write_data( t, addr, data );
+ 		return;
+ 	}

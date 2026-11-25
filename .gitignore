@@ -1,0 +1,16 @@
+# generated patched copies of IDF components, venv, scratch (tools/bt_ldac, tools/fatfs_exfat)
+.local/
+# firmware build directories (app/build, app/build-release, ...) and the sdkconfig that the build generates from sdkconfig.defaults
+app/build*/
+app/sdkconfig
+app/sdkconfig.old
+app/sdkconfig.dbg
+build-dbg/
+# fetched by the component manager; app/dependencies.lock is tracked (it pins the versions and hashes)
+app/managed_components/
+# release script output (tools/release.py): release/<version>/ and release/pages/
+release/
+# web pages: npm packages and the dev server's output (web/dist and flash/dist ARE tracked)
+node_modules/
+.dev/
+__pycache__/

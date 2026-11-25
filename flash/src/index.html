@@ -1,0 +1,206 @@
+<!doctype html>
+<!--
+  NightStand Nano flasher and hardware-setup page (Web Serial). Source of dist/index.html; `npm run build` (see flash/README.md) bundles
+  src/js/main.js and src/css/app.css into ../dist/ and writes the zh-TW text of every data-i18n element into this markup (the pre-load default;
+  strings.js has all three languages). Served at https://jokercatz.github.io/NightStandNano/flash/ next to the control page (../).
+
+  Query parameters:
+    ?lang=en|zh-TW|zh-CN   one load in that language (the select is remembered in localStorage nsn.lang, shared with the control page).
+    ?demo                  a pretend board and a fake flashing run, nothing touches hardware. Extras: &sd=none|unreadable  &spi=mounted|unreadable (a card on the pins of an SPI setting)  &refuse=<reason>
+                           &old (firmware without hw)  &silent  &noise=0  &stop=<0..1> (hang the fake flash there)  &fail=<0..1>  &chip=<name>  &maxbaud=<n> (the bridge cannot change to a faster speed)  &writemaxbaud=<n> (writes above this speed fail)  &tab=hw
+-->
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'">
+<title>NightStand Nano – 燒錄與硬體設定</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <div class="titlebar">
+      <h1 data-i18n="app.title">NightStand Nano</h1>
+      <label class="lang"><span class="mut" data-i18n="lang.label">語言</span>
+        <select id="lang" aria-label="Language"></select></label>
+    </div>
+    <p class="what" data-i18n="top.what">.</p>
+    <nav class="links">
+      <a class="btn primary" id="lnk-releases" href="https://github.com/JokerCatz/NightStandNano/releases/latest" target="_blank" rel="noopener" data-i18n="top.releases">Releases</a>
+      <a class="btn" id="lnk-control" href="../" data-i18n="top.control">Control</a>
+      <a class="btn" id="lnk-readme" href="https://github.com/JokerCatz/NightStandNano#readme" target="_blank" rel="noopener" data-i18n="top.readme">README</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <p id="demo-banner" class="banner" hidden data-i18n="warn.demo">demo</p>
+  <p id="noserial" class="banner bad" hidden data-i18n="warn.noserial">no web serial</p>
+
+  <section class="card" id="conn-card" aria-labelledby="conn-h">
+    <h2 id="conn-h" data-i18n="conn.title">連線</h2>
+    <div class="row">
+      <span class="dot" id="conn-dot"></span>
+      <span id="conn-text" class="grow" data-i18n="conn.off">未連線</span>
+      <button class="primary" id="btn-connect" data-i18n="btn.connect">連線</button>
+      <button id="btn-disconnect" hidden data-i18n="btn.disconnect">中斷連線</button>
+    </div>
+    <p class="mut small" id="conn-fw" hidden></p>
+    <p class="mut small" data-i18n="conn.hint">.</p>
+    <p class="small"><button class="link" id="btn-anyport" data-i18n="btn.anyport">any port</button></p>
+    <p class="warn small" id="conn-err" hidden></p>
+  </section>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" id="tab-btn-flash" aria-controls="tab-flash" aria-selected="true" data-i18n="tab.flash">燒錄韌體</button>
+    <button role="tab" id="tab-btn-hw" aria-controls="tab-hw" aria-selected="false" data-i18n="tab.hw">硬體設定</button>
+  </div>
+
+  <!-- ===== flash ===== -->
+  <section class="card" id="tab-flash" role="tabpanel" aria-labelledby="tab-btn-flash">
+    <p data-i18n="fl.intro">.</p>
+    <details class="help"><summary data-i18n="fl.files.title">files</summary><p class="mut" data-i18n="fl.files.body">.</p></details>
+    <div class="drop" id="fl-drop">
+      <button class="primary" id="fl-pick" data-i18n="fl.pick">選擇</button>
+      <span class="mut" data-i18n="fl.drop">拖放</span>
+      <input type="file" id="fl-file" accept=".bin" multiple hidden>
+    </div>
+    <div id="fl-info" aria-live="polite"></div>
+    <div id="fl-opts" hidden>
+      <label class="check"><input type="checkbox" id="fl-erase"> <span data-i18n="fl.erase.label">erase</span></label>
+      <p class="warn small" id="fl-erase-warn" hidden></p>
+      <div id="fl-plan" class="plan small"></div>
+    </div>
+    <details class="help" id="fl-adv">
+      <summary data-i18n="fl.adv.title">advanced</summary>
+      <label class="field"><span data-i18n="fl.adv.speed">speed</span>
+        <select id="fl-baud"><option value="460800" data-i18n="fl.baud.460800">460800</option><option value="230400" data-i18n="fl.baud.230400">230400</option><option value="115200" data-i18n="fl.baud.115200">115200</option></select></label>
+      <p class="mut small" data-i18n="fl.adv.hint">.</p>
+    </details>
+    <div class="row actions">
+      <button class="primary" id="fl-check" disabled data-i18n="btn.fl.check">check</button>
+      <button class="primary" id="fl-write" hidden disabled data-i18n="btn.fl.write">write</button>
+      <button id="fl-cancel" hidden data-i18n="btn.fl.cancel">cancel</button>
+    </div>
+    <p class="chip ok" id="fl-found" hidden></p>
+    <p class="chip warn small" id="fl-speed-note" hidden></p>
+    <div id="fl-confirm" class="confirm" hidden>
+      <p class="warn" data-i18n="fl.confirm.title">sure?</p>
+      <p class="small" id="fl-confirm-text"></p>
+      <div class="row"><button class="danger" id="fl-confirm-yes" data-i18n="btn.fl.confirm">yes</button><button id="fl-confirm-no" data-i18n="btn.fl.cancel">cancel</button></div>
+    </div>
+    <div id="fl-prog" hidden>
+      <progress id="fl-bar" max="1000" value="0"></progress>
+      <p class="small" id="fl-stat" aria-live="polite"></p>
+    </div>
+    <p class="chip bad" id="fl-err" hidden></p>
+    <div id="fl-done" class="done" hidden>
+      <h3 data-i18n="fl.done.title">done</h3>
+      <p class="small"><b data-i18n="fl.done.next">next</b></p>
+      <ol class="small"><li data-i18n="fl.done.s1">1</li><li data-i18n="fl.done.s2">2</li><li data-i18n="fl.done.s3">3</li></ol>
+      <p><a class="btn primary" id="fl-open-control" href="../" data-i18n="btn.openControl">open</a></p>
+    </div>
+    <details class="help" id="fl-manual"><summary data-i18n="fl.manual.title">manual</summary><p class="mut" data-i18n="fl.manual.body">.</p></details>
+    <details class="help" id="fl-logbox"><summary>esptool</summary><pre id="fl-log" class="log"></pre></details>
+  </section>
+
+  <!-- ===== hardware ===== -->
+  <section class="card" id="tab-hw" role="tabpanel" aria-labelledby="tab-btn-hw" hidden>
+    <div class="safety" id="hw-safety">
+      <h3 data-i18n="hw.safety.title">safety</h3>
+      <ul class="plain small">
+        <li data-i18n="hw.safety.1">1</li><li data-i18n="hw.safety.2">2</li><li data-i18n="hw.safety.3">3</li><li data-i18n="hw.safety.4">4</li><li data-i18n="hw.safety.5">5</li>
+      </ul>
+    </div>
+    <p class="mut" id="hw-off" data-i18n="hw.notconn">connect</p>
+    <p class="mut" id="hw-reading" hidden data-i18n="hw.reading">reading</p>
+    <p class="chip bad" id="hw-noanswer" hidden data-i18n="hw.err.noanswer">no answer</p>
+    <div id="hw-body" hidden>
+      <p class="banner" id="hw-pending" hidden><span data-i18n="hw.pending">pending</span></p>
+      <h3 data-i18n="hw.sd.title">SD</h3>
+      <p><span class="chip" id="hw-sd-state"></span> <span class="mut small" id="hw-sd-meta"></span></p>
+      <p class="mut small" id="hw-sd-statenote" hidden data-i18n="hw.sd.statenote">.</p>
+      <fieldset class="modes" id="hw-sd-modes">
+        <legend data-i18n="hw.conn.title">connection</legend>
+        <label class="radio"><input type="radio" name="hw-sd-mode" value="sdmmc" id="hw-mode-sdmmc"> <span data-i18n="hw.conn.sdmmc">sdmmc</span></label>
+        <label class="radio"><input type="radio" name="hw-sd-mode" value="spi" id="hw-mode-spi"> <span data-i18n="hw.conn.spi">spi</span></label>
+      </fieldset>
+      <div id="hw-sd-sdmmc">
+        <p class="small" data-i18n="hw.mmc.fixed">fixed</p>
+        <div class="pins" id="hw-sdmmc-pins"></div>
+        <div class="row">
+          <label class="field"><span data-i18n="hw.width">width</span>
+            <select id="hw-width"><option value="4" data-i18n="hw.width.4">4</option><option value="1" data-i18n="hw.width.1">1</option></select></label>
+        </div>
+      </div>
+      <div id="hw-sd-spi" hidden>
+        <p class="small" data-i18n="hw.spi.intro">spi</p>
+        <div class="pins" id="hw-spi-pins"></div>
+        <p class="mut small" id="hw-range"></p>
+        <table class="parts wiring">
+          <thead><tr><th data-i18n="hw.wire.col.fw">fw</th><th data-i18n="hw.wire.col.card">card</th><th data-i18n="hw.wire.col.note">note</th></tr></thead>
+          <tbody>
+            <tr><td>CS</td><td>DAT3 (CD)</td><td data-i18n="hw.wire.cs">pull-up</td></tr>
+            <tr><td>MOSI</td><td>CMD</td><td data-i18n="hw.wire.mosi">pull-up</td></tr>
+            <tr><td>MISO</td><td>DAT0</td><td data-i18n="hw.wire.miso">pull-up</td></tr>
+            <tr><td>CLK</td><td>CLK</td><td data-i18n="hw.wire.clk">short</td></tr>
+            <tr><td>3.3 V</td><td>VDD</td><td data-i18n="hw.wire.vdd">3.3 V</td></tr>
+            <tr><td>GND</td><td>VSS</td><td data-i18n="hw.wire.gnd">gnd</td></tr>
+          </tbody>
+        </table>
+        <ul class="plain small">
+          <li data-i18n="hw.spi.note.unused">unused</li>
+          <li data-i18n="hw.spi.note.slow">slower</li>
+        </ul>
+      </div>
+      <p class="chip warn small" id="hw-powercycle" hidden data-i18n="hw.spi.powercycle">power cycle</p>
+      <ul class="issues small" id="hw-sd-issues"></ul>
+      <p><button class="primary" id="hw-sd-apply" data-i18n="btn.hw.sd.apply">save</button></p>
+
+      <h3 data-i18n="hw.led.title">LED</h3>
+      <label class="check"><input type="checkbox" id="hw-led-on"> <span data-i18n="hw.led.on">on</span></label>
+      <div class="row">
+        <label class="field"><span data-i18n="hw.led.gpio">gpio</span><input type="number" id="hw-led-gpio" step="1" inputmode="numeric"></label>
+        <label class="field"><span data-i18n="hw.led.order">order</span><select id="hw-led-order"></select></label>
+        <span class="mut small" id="hw-led-src"></span>
+      </div>
+      <ul class="issues small" id="hw-led-issues"></ul>
+      <p><button class="primary" id="hw-led-apply" data-i18n="btn.hw.led.apply">save</button></p>
+
+      <p class="mut small" id="hw-reserved"></p>
+      <p class="small" id="hw-reserved-why" hidden aria-live="polite"></p>
+      <p class="chip" id="hw-result" hidden aria-live="polite"></p>
+      <div class="row actions">
+        <button id="hw-restart" data-i18n="btn.hw.restart">restart</button>
+        <button id="hw-defaults" data-i18n="btn.hw.defaults">defaults</button>
+        <button id="hw-reread" data-i18n="btn.hw.reread">reread</button>
+      </div>
+      <div id="hw-defaults-ask" class="confirm" hidden>
+        <p class="small" data-i18n="hw.defaults.ask">sure?</p>
+        <div class="row"><button class="danger" id="hw-defaults-yes" data-i18n="btn.hw.defaults.yes">yes</button><button id="hw-defaults-no" data-i18n="btn.fl.cancel">no</button></div>
+      </div>
+      <p class="mut small" id="hw-restarting" hidden data-i18n="hw.restarting">restarting</p>
+    </div>
+  </section>
+
+  <details class="card console" id="console" open>
+    <summary data-i18n="con.title">console</summary>
+    <p class="mut small" data-i18n="con.note">.</p>
+    <pre id="con-log" class="log" tabindex="0" aria-live="off" data-i18n-aria="con.aria"></pre>
+    <form class="row" id="con-form" autocomplete="off">
+      <input type="text" id="con-input" class="grow" spellcheck="false" autocapitalize="off" data-i18n-placeholder="con.placeholder">
+      <button type="submit" id="con-send" data-i18n="btn.con.send">send</button>
+      <button type="button" id="con-clear" data-i18n="btn.con.clear">clear</button>
+    </form>
+  </details>
+</main>
+
+<footer class="wrap foot mut small">
+  <span id="build-stamp"></span> · <span data-i18n="foot.legal">.</span>
+</footer>
+<script src="js/main.js"></script>
+</body>
+</html>

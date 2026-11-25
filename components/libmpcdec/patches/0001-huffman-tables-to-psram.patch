@@ -1,0 +1,221 @@
+diff --color -ru a/huffman.c libmpcdec/huffman.c
+--- a/huffman.c	2026-11-17 21:00:45.782404977 +0800
++++ b/huffman.c	2026-11-17 21:00:45.792921691 +0800
+@@ -34,13 +34,15 @@
+ /// \file huffman.c
+ /// Implementations of sv7/sv8 huffman decoding functions.
+ #include "huffman.h"
++#include <stdlib.h>
++#include <string.h>
+ 
+ 
+ // sv7 huffman tables
+ static const mpc_huffman mpc_table_HuffHdr [10] = {
+ {0x8000, 1, 0}, {0x6000, 3, 1}, {0x5e00, 7, -4}, {0x5d80, 9, 3}, {0x5d00, 9, 4}, {0x5c00, 8, -5}, {0x5800, 6, 2}, {0x5000, 5, -3}, {0x4000, 4, -2}, {0x0, 2, -1}
+ };
+-mpc_lut_data mpc_HuffHdr = {mpc_table_HuffHdr};
++static const mpc_lut_data tpl_HuffHdr = {mpc_table_HuffHdr};
+ 
+ const mpc_huffman mpc_table_HuffSCFI [4] = {
+ 	{0x8000, 1, 1}, {0x6000, 3, 2}, {0x4000, 3, 0}, {0x0, 2, 3}
+@@ -49,7 +51,7 @@
+ static const mpc_huffman mpc_table_HuffDSCF [16] = {
+ 	{0xf800, 5, 5}, {0xf000, 5, -4}, {0xe000, 4, 3}, {0xd000, 4, -3}, {0xc000, 4, 8}, {0xa000, 3, 1}, {0x9000, 4, 0}, {0x8800, 5, -5}, {0x8400, 6, 7}, {0x8000, 6, -7}, {0x6000, 3, -1}, {0x4000, 3, 2}, {0x3000, 4, 4}, {0x2800, 5, 6}, {0x2000, 5, -6}, {0x0, 3, -2}
+ };
+-mpc_lut_data mpc_HuffDSCF = {mpc_table_HuffDSCF};
++static const mpc_lut_data tpl_HuffDSCF = {mpc_table_HuffDSCF};
+ 
+ static const mpc_huffman mpc_table_HuffQ1 [2] [27] = {
+ 	{
+@@ -107,7 +109,7 @@
+ 	}
+ };
+ 
+-mpc_lut_data mpc_HuffQ [7] [2] = {
++static const mpc_lut_data tpl_HuffQ [7] [2] = {
+ 	{{mpc_table_HuffQ1[0]}, {mpc_table_HuffQ1[1]}},
+ 	{{mpc_table_HuffQ2[0]}, {mpc_table_HuffQ2[1]}},
+ 	{{mpc_table_HuffQ3[0]}, {mpc_table_HuffQ3[1]}},
+@@ -131,7 +133,7 @@
+ static const mpc_int8_t mpc_sym_SCFI_2 [16] = {
+ 	15, 10, 14, 11, 13, 9, 7, 6, 5, 12, 8, 3, 2, 0, 4, 1
+ };
+-mpc_can_data mpc_can_SCFI[2] = {{mpc_huff_SCFI_1, mpc_sym_SCFI_1}, {mpc_huff_SCFI_2, mpc_sym_SCFI_2}};
++static const mpc_can_data tpl_can_SCFI[2] = {{mpc_huff_SCFI_1, mpc_sym_SCFI_1}, {mpc_huff_SCFI_2, mpc_sym_SCFI_2}};
+ 
+ static const mpc_huffman mpc_huff_DSCF_1 [12] = {
+ 	{0xa000, 3, 7}, {0x4000, 4, 12}, {0x2800, 5, 16}, {0x1800, 6, 21}, {0xe00, 7, 27}, {0x700, 8, 34}, {0x380, 9, 41}, {0x140, 10, 48}, {0x80, 11, 53}, {0x30, 12, 57}, {0x18, 13, 60}, {0x0, 14, 63}
+@@ -145,7 +147,7 @@
+ static const mpc_int8_t mpc_sym_DSCF_2 [65] = {
+ 	33, 32, 31, 30, 29, 34, 28, 27, 36, 35, 26, 37, 25, 38, 24, 23, 40, 39, 22, 21, 42, 41, 20, 19, 18, 45, 44, 43, 17, 16, 15, 14, 48, 47, 46, 13, 12, 11, 10, 64, 52, 51, 50, 49, 9, 8, 7, 6, 55, 54, 53, 5, 4, 3, 58, 57, 56, 2, 1, 63, 62, 61, 60, 59, 0
+ };
+-mpc_can_data mpc_can_DSCF[2] = {{mpc_huff_DSCF_1, mpc_sym_DSCF_1}, {mpc_huff_DSCF_2, mpc_sym_DSCF_2}};
++static const mpc_can_data tpl_can_DSCF[2] = {{mpc_huff_DSCF_1, mpc_sym_DSCF_1}, {mpc_huff_DSCF_2, mpc_sym_DSCF_2}};
+ 
+ static const mpc_huffman mpc_huff_Bands [12] = {
+ 	{0x8000, 1, 1}, {0x4000, 2, 2}, {0x2000, 3, 3}, {0x1000, 5, 6}, {0x800, 6, 8}, {0x600, 7, 10}, {0x300, 8, 13}, {0x200, 9, 16}, {0x140, 10, 20}, {0xc0, 11, 25}, {0x10, 12, 31}, {0x0, 13, 32}
+@@ -153,7 +155,7 @@
+ static const mpc_int8_t mpc_sym_Bands [33] = {
+ 	0, 32, 1, 31, 2, 30, 3, 4, 29, 6, 5, 28, 7, 27, 26, 8, 25, 24, 23, 9, 22, 21, 20, 18, 17, 16, 15, 14, 12, 11, 10, 19, 13
+ };
+-mpc_can_data mpc_can_Bands = {mpc_huff_Bands, mpc_sym_Bands};
++static const mpc_can_data tpl_can_Bands = {mpc_huff_Bands, mpc_sym_Bands};
+ 
+ static const mpc_huffman mpc_huff_Res_1 [16] = {
+ 	{0x8000, 1, 1}, {0x4000, 2, 2}, {0x2000, 3, 3}, {0x1000, 4, 4}, {0x800, 5, 5}, {0x400, 6, 6}, {0x200, 7, 7}, {0x100, 8, 8}, {0x80, 9, 9}, {0x40, 10, 10}, {0x20, 11, 11}, {0x10, 12, 12}, {0x8, 13, 13}, {0x4, 14, 14}, {0x2, 15, 15}, {0x0, 16, 16}
+@@ -167,7 +169,7 @@
+ static const mpc_int8_t mpc_sym_Res_2 [17] = {
+ 	16, 1, 0, 2, 15, 3, 14, 4, 5, 13, 6, 12, 7, 11, 10, 9, 8
+ };
+-mpc_can_data mpc_can_Res[2] = {{mpc_huff_Res_1, mpc_sym_Res_1}, {mpc_huff_Res_2, mpc_sym_Res_2}};
++static const mpc_can_data tpl_can_Res[2] = {{mpc_huff_Res_1, mpc_sym_Res_1}, {mpc_huff_Res_2, mpc_sym_Res_2}};
+ 
+ static const mpc_huffman mpc_huff_Q1 [10] = {
+ 	{0x6000, 3, 7}, {0x1000, 4, 10}, {0x800, 5, 11}, {0x400, 6, 12}, {0x200, 7, 13}, {0x100, 8, 14}, {0x80, 9, 15}, {0x40, 10, 16}, {0x20, 11, 17}, {0x0, 12, 18}
+@@ -175,7 +177,7 @@
+ static const mpc_int8_t mpc_sym_Q1 [19] = {
+ 	7, 6, 5, 4, 3, 10, 9, 8, 2, 1, 11, 0, 12, 13, 14, 15, 16, 18, 17
+ };
+-mpc_can_data mpc_can_Q1 = {mpc_huff_Q1, mpc_sym_Q1};
++static const mpc_can_data tpl_can_Q1 = {mpc_huff_Q1, mpc_sym_Q1};
+ 
+ static const mpc_huffman mpc_huff_Q2_1 [10] = {
+ 	{0xe000, 3, 7}, {0x8000, 4, 14}, {0x3c00, 6, 38}, {0x2a00, 7, 53}, {0x1200, 8, 74}, {0x600, 9, 92}, {0x3c0, 10, 104}, {0x60, 11, 119}, {0x20, 12, 122}, {0x0, 13, 124}
+@@ -262,10 +264,10 @@
+ static const mpc_int8_t mpc_sym_Q9up [256] = {
+ 	-128, 127, -108, -110, -111, -112, -113, -114, -115, -116, -117, -118, -119, -120, -121, -122, -123, -124, -125, -126, -127, 126, 125, 124, 123, 122, 121, 120, 119, 118, 117, 116, 115, 114, 113, 112, 111, 110, 109, 108, -44, -45, -46, -47, -48, -49, -50, -51, -52, -53, -54, -55, -56, -57, -58, -59, -60, -61, -62, -63, -64, -65, -66, -67, -68, -69, -70, -71, -72, -73, -74, -75, -76, -77, -78, -79, -80, -81, -82, -83, -84, -85, -86, -87, -88, -89, -90, -91, -92, -93, -94, -95, -96, -97, -98, -99, -100, -101, -102, -103, -104, -105, -106, -107, -109, 107, 106, 105, 104, 103, 102, 101, 100, 99, 98, 97, 96, 95, 94, 93, 92, 91, 90, 89, 88, 87, 86, 85, 84, 83, 82, 81, 80, 79, 78, 77, 76, 75, 74, 73, 72, 71, 70, 69, 68, 67, 66, 65, 64, 63, 62, 61, 60, 59, 58, 57, 56, 55, 54, 53, 52, 51, 50, 49, 48, 47, 46, 45, 44, 43, 42, 40, 20, 19, -7, -8, -9, -10, -11, -12, -13, -14, -15, -16, -17, -18, -19, -20, -21, -22, -23, -24, -25, -26, -27, -28, -29, -30, -31, -32, -33, -34, -35, -36, -37, -38, -39, -40, -41, -42, -43, 41, 39, 38, 37, 36, 35, 34, 33, 32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, -3, -4, -5, -6, 4, 3, 2, 1, 0, -1, -2
+ };
+-mpc_can_data mpc_can_Q9up = {mpc_huff_Q9up, mpc_sym_Q9up};
++static const mpc_can_data tpl_can_Q9up = {mpc_huff_Q9up, mpc_sym_Q9up};
+ 
+ 
+-mpc_can_data mpc_can_Q [6][2] = {
++static const mpc_can_data tpl_can_Q [6][2] = {
+ 	{{mpc_huff_Q2_1, mpc_sym_Q2_1}, {mpc_huff_Q2_2, mpc_sym_Q2_2}},
+ 	{{mpc_huff_Q3, mpc_sym_Q3},     {mpc_huff_Q4, mpc_sym_Q4}},
+ 	{{mpc_huff_Q5_1, mpc_sym_Q5_1}, {mpc_huff_Q5_2, mpc_sym_Q5_2}},
+@@ -330,29 +332,48 @@
+ 	}
+ }
+ 
++/* JC patch 0001: the tables and their lookup tables (5.3 KB) are one malloc'd (PSRAM) state built from the const templates above, once,
++ * instead of initialised globals (.data would sit in internal RAM). */
++mpc_huff_state *mpc_hs;
++
+ void huff_init_lut(const int bits)
+ {
+ 	int i, j;
++	mpc_huff_state *s;
+ 
+-	huff_fill_lut(mpc_HuffDSCF.table, mpc_HuffDSCF.lut, bits);
+-	huff_fill_lut(mpc_HuffHdr.table, mpc_HuffHdr.lut, bits);
+-
+-	can_fill_lut(&mpc_can_SCFI[0], bits);
+-	can_fill_lut(&mpc_can_SCFI[1], bits);
+-	can_fill_lut(&mpc_can_DSCF[0], bits);
+-	can_fill_lut(&mpc_can_DSCF[1], bits);
+-	can_fill_lut(&mpc_can_Res[0], bits);
+-	can_fill_lut(&mpc_can_Res[1], bits);
+-	can_fill_lut(&mpc_can_Q1, bits);
+-	can_fill_lut(&mpc_can_Q9up, bits);
+-
++	if (mpc_hs)
++		return;
++	s = malloc(sizeof *s);
++	if (!s)
++		return;
++	memcpy(&s->HuffHdr, &tpl_HuffHdr, sizeof s->HuffHdr);
++	memcpy(&s->HuffDSCF, &tpl_HuffDSCF, sizeof s->HuffDSCF);
++	memcpy(s->HuffQ, tpl_HuffQ, sizeof s->HuffQ);
++	memcpy(s->can_SCFI, tpl_can_SCFI, sizeof s->can_SCFI);
++	memcpy(s->can_DSCF, tpl_can_DSCF, sizeof s->can_DSCF);
++	memcpy(&s->can_Bands, &tpl_can_Bands, sizeof s->can_Bands);
++	memcpy(s->can_Res, tpl_can_Res, sizeof s->can_Res);
++	memcpy(&s->can_Q1, &tpl_can_Q1, sizeof s->can_Q1);
++	memcpy(&s->can_Q9up, &tpl_can_Q9up, sizeof s->can_Q9up);
++	memcpy(s->can_Q, tpl_can_Q, sizeof s->can_Q);
++
++	huff_fill_lut(s->HuffDSCF.table, s->HuffDSCF.lut, bits);
++	huff_fill_lut(s->HuffHdr.table, s->HuffHdr.lut, bits);
++
++	can_fill_lut(&s->can_SCFI[0], bits);
++	can_fill_lut(&s->can_SCFI[1], bits);
++	can_fill_lut(&s->can_DSCF[0], bits);
++	can_fill_lut(&s->can_DSCF[1], bits);
++	can_fill_lut(&s->can_Res[0], bits);
++	can_fill_lut(&s->can_Res[1], bits);
++	can_fill_lut(&s->can_Q1, bits);
++	can_fill_lut(&s->can_Q9up, bits);
+ 
+ 	for( i = 0; i < 7; i++){
+ 		for( j = 0; j < 2; j++){
+-			if (i != 6) can_fill_lut(&mpc_can_Q[i][j], bits);
+-			huff_fill_lut(mpc_HuffQ[i][j].table, mpc_HuffQ[i][j].lut, bits);
++			if (i != 6) can_fill_lut(&s->can_Q[i][j], bits);
++			huff_fill_lut(s->HuffQ[i][j].table, s->HuffQ[i][j].lut, bits);
+ 		}
+ 	}
++	mpc_hs = s;
+ }
+-
+-
+diff --color -ru a/huffman.h libmpcdec/huffman.h
+--- a/huffman.h	2026-11-17 21:00:45.782422341 +0800
++++ b/huffman.h	2026-11-17 21:00:45.793014332 +0800
+@@ -77,6 +77,23 @@
+ 
+ void huff_init_lut(const int bits);
+ 
++/* JC patch 0001: the decoding tables live in one state block built by huff_init_lut (see huffman.c); the old names keep working. */
++typedef struct mpc_huff_state_t {
++	mpc_lut_data HuffHdr, HuffDSCF, HuffQ[7][2];
++	mpc_can_data can_SCFI[2], can_DSCF[2], can_Bands, can_Res[2], can_Q1, can_Q9up, can_Q[6][2];
++} mpc_huff_state;
++extern mpc_huff_state *mpc_hs;
++#define mpc_HuffHdr (mpc_hs->HuffHdr)
++#define mpc_HuffDSCF (mpc_hs->HuffDSCF)
++#define mpc_HuffQ (mpc_hs->HuffQ)
++#define mpc_can_SCFI (mpc_hs->can_SCFI)
++#define mpc_can_DSCF (mpc_hs->can_DSCF)
++#define mpc_can_Bands (mpc_hs->can_Bands)
++#define mpc_can_Res (mpc_hs->can_Res)
++#define mpc_can_Q1 (mpc_hs->can_Q1)
++#define mpc_can_Q9up (mpc_hs->can_Q9up)
++#define mpc_can_Q (mpc_hs->can_Q)
++
+ #ifdef __cplusplus
+ }
+ #endif
+diff --color -ru a/mpc_decoder.c libmpcdec/mpc_decoder.c
+--- a/mpc_decoder.c	2026-11-17 21:00:45.782493947 +0800
++++ b/mpc_decoder.c	2026-11-17 21:00:45.793130131 +0800
+@@ -45,19 +45,9 @@
+ #include "mpc_bits_reader.h"
+ 
+ //SV7 tables
+-extern const mpc_lut_data   mpc_HuffQ [7] [2];
+-extern const mpc_lut_data   mpc_HuffHdr;
+ extern const mpc_huffman    mpc_table_HuffSCFI [ 4];
+-extern const mpc_lut_data   mpc_HuffDSCF;
+ 
+ //SV8 tables
+-extern const mpc_can_data mpc_can_Bands;
+-extern const mpc_can_data mpc_can_SCFI[2];
+-extern const mpc_can_data mpc_can_DSCF[2];
+-extern const mpc_can_data mpc_can_Res [2];
+-extern const mpc_can_data mpc_can_Q [8][2];
+-extern const mpc_can_data mpc_can_Q1;
+-extern const mpc_can_data mpc_can_Q9up;
+ 
+ //------------------------------------------------------------------------------
+ // types
+@@ -120,7 +110,8 @@
+ 	if (p_tmp != 0) {
+ 		mpc_decoder_setup(p_tmp);
+ 		mpc_decoder_set_streaminfo(p_tmp, si);
+-		huff_init_lut(LUT_DEPTH); // FIXME : this needs to be called only once when the library is loaded
++		huff_init_lut(LUT_DEPTH); // builds the tables once (JC patch 0001)
++		if (!mpc_hs) { free(p_tmp); return 0; }
+ 	}
+ 
+ 	return p_tmp;

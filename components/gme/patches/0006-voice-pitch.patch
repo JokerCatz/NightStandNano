@@ -1,0 +1,78 @@
+diff --git a/gme/Ay_Apu.h b/gme/Ay_Apu.h
+index 674c522..e79baa7 100644
+--- a/gme/Ay_Apu.h
++++ b/gme/Ay_Apu.h
+@@ -42,6 +42,8 @@ public:
+ 	int osc_last_amp( int i ) const { assert( (unsigned) i < osc_count ); return oscs [i].last_amp; }
+ 	// Task 9 meter: mixer register 7 (bit i = tone off, bit i+3 = noise off). Both off = the channel is a 4-bit DAC.
+ 	int mixer_reg() const { return regs [7]; }
++	// Visualiser pitch (JC 2026-11-17): the tone period in clocks (register x 16); Hz = clock / (2 period), clock as Ay_Apu counts it (twice the AY clock).
++	int osc_period( int i ) const { assert( (unsigned) i < osc_count ); return oscs [i].period; }
+ 	// -- end voice-peek addition --
+ 
+ 	// Set overall volume (default is 1.0)
+diff --git a/gme/Gb_Apu.h b/gme/Gb_Apu.h
+index 7096f53..e6f6cf8 100644
+--- a/gme/Gb_Apu.h
++++ b/gme/Gb_Apu.h
+@@ -58,6 +58,8 @@ public:
+ 	// oscillator was run, not necessarily "right now". Control-path peek
+ 	// only; do not call from the audio render thread.
+ 	int osc_last_amp( int i ) const { assert( (unsigned) i < osc_count ); return oscs [i]->last_amp; }
++	// Visualiser pitch (JC 2026-11-17): the 11 bit frequency register x of osc 0..2 (not the noise); Hz = clock / (32 (2048 - x)) pulses, / (64 (2048 - x)) wave.
++	int osc_freq( int i ) const { assert( (unsigned) i < 3 ); return oscs [i]->frequency(); }
+ 	// -- end voice-peek addition --
+ 
+ public:
+diff --git a/gme/Hes_Apu.h b/gme/Hes_Apu.h
+index 32dda08..5581756 100644
+--- a/gme/Hes_Apu.h
++++ b/gme/Hes_Apu.h
+@@ -64,6 +64,8 @@ public:
+ 	}
+ 	// Task 9 meter: channel i's control register (bit 7 on, bit 6 direct-D/A mode).
+ 	int osc_control( int i ) const { assert( (unsigned) i < osc_count ); return oscs [i].control; }
++	// Visualiser pitch (JC 2026-11-17): the 12 bit period; Hz = clock / (64 p), clock = the PC Engine CPU clock.
++	int osc_period( int i ) const { assert( (unsigned) i < osc_count ); return oscs [i].period; }
+ 	// -- end voice-peek addition --
+ 
+ 	void reset();
+diff --git a/gme/Nes_Apu.h b/gme/Nes_Apu.h
+index b0863c2..89e1ed4 100644
+--- a/gme/Nes_Apu.h
++++ b/gme/Nes_Apu.h
+@@ -103,6 +103,8 @@ public:
+ 	// Control-path peek only; do not call from the audio render thread.
+ 	int osc_last_amp( int i ) const { assert( (unsigned) i < osc_count ); return oscs [i]->last_amp; }
+ 	// Task 9 meter: the triangle has no volume, it sounds only while both its length and linear counters run.
++	// Visualiser pitch (JC 2026-11-17): the period register of osc 0/1 (pulses) and 2 (triangle), 0..2047; Hz = clock / (16 (p + 1)) pulses, clock / (32 (p + 1)) triangle.
++	int osc_period( int i ) const { assert( (unsigned) i < 3 ); return oscs [i]->period(); }
+ 	bool triangle_active_() const { return triangle.length_counter != 0 && triangle.linear_counter != 0; }
+ 	// -- end voice-peek addition --
+ 
+diff --git a/gme/Nes_Vrc6_Apu.h b/gme/Nes_Vrc6_Apu.h
+index 3db6f05..5d4902b 100644
+--- a/gme/Nes_Vrc6_Apu.h
++++ b/gme/Nes_Vrc6_Apu.h
+@@ -41,6 +41,8 @@ public:
+ 	// accumulator, unipolar 0-31 -- see Nes_Vrc6_Apu.cpp). Task 39 (NSF
+ 	// expansion-chip Channels page adapters).
+ 	int osc_last_amp( int i ) const { assert( (unsigned) i < osc_count ); return oscs [i].last_amp; }
++	// Visualiser pitch (JC 2026-11-17): the period incl. the +1 (osc 0/1 squares, 2 saw); Hz = clock / (16 period) squares, clock / (14 period) saw.
++	int osc_period( int i ) const { assert( (unsigned) i < osc_count ); return oscs [i].period(); }
+ 	// -- end voice-peek addition --
+ 
+ public:
+diff --git a/gme/Sms_Apu.h b/gme/Sms_Apu.h
+index 8fc6862..d77fb0a 100644
+--- a/gme/Sms_Apu.h
++++ b/gme/Sms_Apu.h
+@@ -54,6 +54,8 @@ public:
+ 	// necessarily "right now". Control-path peek only; do not call from
+ 	// the audio render thread.
+ 	int osc_last_amp( int i ) const { assert( (unsigned) i < osc_count ); return oscs [i]->last_amp; }
++	// Visualiser pitch (JC 2026-11-17): squares 0..2: the period in clocks (register x 16); Hz = clock / (2 period). 0: no period set.
++	int osc_period( int i ) const { assert( (unsigned) i < 3 ); return squares [i].period; }
+ 	// -- end voice-peek addition --
+ 
+ public:

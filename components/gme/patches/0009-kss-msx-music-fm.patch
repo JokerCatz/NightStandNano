@@ -1,0 +1,230 @@
+diff --git a/components/gme/gme/Kss_Emu.cpp b/components/gme/gme/Kss_Emu.cpp
+index a683418..cf3202c 100644
+--- a/components/gme/gme/Kss_Emu.cpp
++++ b/components/gme/gme/Kss_Emu.cpp
+@@ -25,9 +25,17 @@ static int const osc_count = Ay_Apu::osc_count + Scc_Apu::osc_count;
+ using std::min;
+ using std::max;
+ 
++bool Kss_Emu::fm_wanted = false;
++
+ Kss_Emu::Kss_Emu()
+ {
+ 	sn = 0;
++	fm = 0;
++	fm_ring = 0;
++	fm_rd = fm_wr = 0;
++	fm_clk = fm_done = 0;
++	fm_nev = 0;
++	fm_latch = 0;
+ 	set_type( gme_kss_type );
+ 	set_silence_lookahead( 6 );
+ 	static const char* const names [osc_count] = {
+@@ -51,6 +59,10 @@ void Kss_Emu::unload()
+ {
+ 	delete sn;
+ 	sn = 0;
++	delete fm;
++	fm = 0;
++	delete [] fm_ring;
++	fm_ring = 0;
+ 	Classic_Emu::unload();
+ }
+ 
+@@ -155,8 +167,22 @@ blargg_err_t Kss_Emu::load_( Data_Reader& in )
+ 			set_warning( "Unknown data in header" );
+ 	}
+ 
+-	if ( header_.device_flags & 0x09 )
+-		set_warning( "FM sound not supported" );
++	if ( header_.device_flags & 0x08 )
++		set_warning( "FM sound not supported" ); // MSX-AUDIO (Y8950): not emulated
++	if ( header_.device_flags & 0x01 && !fm_wanted )
++		set_warning( "FM sound not supported" ); // MSX-MUSIC: emulated (JC 0009) only when fm_wanted
++
++	if ( header_.device_flags & 0x01 && fm_wanted && !fm )
++	{
++		CHECK_ALLOC( fm = BLARGG_NEW Ym2413_Emu );
++		CHECK_ALLOC( fm_ring = BLARGG_NEW short [fm_ring_size * 2] );
++		if ( fm->set_rate( sample_rate(), ::clock_rate ) )
++		{
++			delete fm;
++			fm = 0;
++			set_warning( "FM sound not supported" );
++		}
++	}
+ 
+ 	scc_enabled = 0xC000;
+ 	if ( header_.device_flags & 0x04 )
+@@ -249,6 +275,12 @@ blargg_err_t Kss_Emu::start_track_( int track )
+ 	scc.reset();
+ 	if ( sn )
+ 		sn->reset();
++	if ( fm )
++		fm->reset();
++	fm_rd = fm_wr = 0;
++	fm_clk = fm_done = 0;
++	fm_nev = 0;
++	fm_latch = 0;
+ 	r.sp = 0xF380;
+ 	ram [--r.sp] = idle_addr >> 8;
+ 	ram [--r.sp] = idle_addr & 0xFF;
+@@ -341,6 +373,28 @@ void kss_cpu_out( Kss_Cpu* cpu, cpu_time_t time, unsigned addr, int data )
+ 		}
+ 		break;
+ 
++	case 0x7C: // MSX-MUSIC register select (JC 0009)
++		if ( emu.fm )
++		{
++			emu.fm_latch = (byte) data;
++			return;
++		}
++		break;
++
++	case 0x7D: // MSX-MUSIC data
++		if ( emu.fm )
++		{
++			if ( emu.fm_nev < Kss_Emu::fm_ev_max )
++			{
++				Kss_Emu::fm_ev_t& e = emu.fm_evs [emu.fm_nev++];
++				e.t = time;
++				e.a = emu.fm_latch;
++				e.d = (byte) data;
++			}
++			return;
++		}
++		break;
++
+ 	case 0x7E:
+ 	case 0x7F:
+ 		if ( emu.sn )
+@@ -414,6 +468,8 @@ blargg_err_t Kss_Emu::run_clocks( blip_time_t& duration, int )
+ 	next_play -= duration;
+ 	check( next_play >= 0 );
+ 	adjust_time( -duration );
++	if ( fm )
++		fm_render( duration );
+ 	ay.end_frame( duration );
+ 	scc.end_frame( duration );
+ 	if ( sn )
+@@ -421,3 +477,68 @@ blargg_err_t Kss_Emu::run_clocks( blip_time_t& duration, int )
+ 
+ 	return 0;
+ }
++
++
++// JC 0009 (CHIP2A): MSX-MUSIC. The FM chip runs at the output sample rate in step with the emulated clocks: a frame of `duration` clocks is
++// duration x rate / 3579545 FM frames, split at the port writes the Z80 made during it.
++void Kss_Emu::fm_gen( long frames )
++{
++	short scratch [2 * 128];
++	while ( frames > 0 )
++	{
++		unsigned room = fm_ring_size - (fm_wr - fm_rd);
++		if ( !room )
++		{
++			// the player is behind: the chip must still run to keep its state, the samples are dropped
++			int n = (int) min( frames, 128L );
++			fm->run( n, scratch );
++			frames -= n;
++			continue;
++		}
++		unsigned at = fm_wr % fm_ring_size;
++		long n = min( frames, (long) room );
++		n = min( n, (long) (fm_ring_size - at) );
++		fm->run( (int) n, fm_ring + 2 * at );
++		fm_wr += (unsigned) n;
++		frames -= n;
++	}
++}
++
++void Kss_Emu::fm_render( blip_time_t duration )
++{
++	const int64_t rate = sample_rate(), end = (fm_clk + duration) * rate / ::clock_rate;
++	int64_t pos = fm_done;
++	for ( int i = 0; i < fm_nev; i++ )
++	{
++		int64_t at = (fm_clk + fm_evs [i].t) * rate / ::clock_rate;
++		if ( at > end )
++			at = end;
++		if ( at > pos )
++		{
++			fm_gen( (long) (at - pos) );
++			pos = at;
++		}
++		fm->write( fm_evs [i].a, fm_evs [i].d );
++	}
++	if ( end > pos )
++		fm_gen( (long) (end - pos) );
++	fm_done = end;
++	fm_clk += duration;
++	fm_nev = 0;
++}
++
++blargg_err_t Kss_Emu::play_( long count, sample_t out [] )
++{
++	RETURN_ERR( Classic_Emu::play_( count, out ) );
++	if ( fm )
++	{
++		for ( long i = 0; i + 1 < count && fm_rd != fm_wr; i += 2, fm_rd++ )
++		{
++			const short* p = fm_ring + 2 * (fm_rd % fm_ring_size);
++			int l = out [i] + p [0] / 2, r = out [i + 1] + p [1] / 2;
++			out [i] = (sample_t) (l > 32767 ? 32767 : l < -32768 ? -32768 : l);
++			out [i + 1] = (sample_t) (r > 32767 ? 32767 : r < -32768 ? -32768 : r);
++		}
++	}
++	return 0;
++}
+diff --git a/components/gme/gme/Kss_Emu.h b/components/gme/gme/Kss_Emu.h
+index 9c4d4aa..0195364 100644
+--- a/components/gme/gme/Kss_Emu.h
++++ b/components/gme/gme/Kss_Emu.h
+@@ -9,6 +9,7 @@
+ #include "Kss_Cpu.h"
+ #include "Sms_Apu.h"
+ #include "Ay_Apu.h"
++#include "Ym2413_Emu.h"
+ 
+ class Kss_Emu : private Kss_Cpu, public Classic_Emu {
+ 	typedef Kss_Cpu cpu;
+@@ -47,6 +48,10 @@ public:
+ 	composite_header_t const& header() const { return header_; }
+ 
+ 	static gme_type_t static_type() { return gme_kss_type; }
++
++	// JC 0009 (CHIP2A): render MSX-MUSIC (YM2413 on ports $7C/$7D) when the file has it. Off by default: emu2413 costs about 0.9 us of a host core per output
++	// sample (it is 80 % of a KSS-with-FM file's decode time), more than the board's budget; the host benches switch it on to measure it.
++	static bool fm_wanted;
+ public:
+ 	Kss_Emu();
+ 	~Kss_Emu();
+@@ -70,6 +75,7 @@ protected:
+ 	blargg_err_t load_( Data_Reader& );
+ 	blargg_err_t start_track_( int );
+ 	blargg_err_t run_clocks( blip_time_t&, int );
++	blargg_err_t play_( long count, sample_t out [] ) override; // JC 0009: adds the MSX-MUSIC (YM2413) samples
+ 	void set_tempo_( double );
+ 	void set_voice( int, Blip_Buffer*, Blip_Buffer*, Blip_Buffer* );
+ 	void update_eq( blip_eq_t const& );
+@@ -100,6 +106,20 @@ private:
+ 	static const unsigned int mem_size = 0x10000;
+ 	byte ram [mem_size + cpu_padding];
+ 
++	// JC 0009 (CHIP2A): MSX-MUSIC. Ports $7C / $7D feed an emu2413 (Ym2413_Emu); its samples are generated per emulated frame, at the sample
++	// positions of the port writes, into a small ring that play_ mixes into the output (half amplitude). Not a voice: no meter, no mute.
++	Ym2413_Emu* fm;                    // NULL unless the header's device flags select FM (bit 0)
++	enum { fm_ring_size = 4096, fm_ev_max = 256 };
++	short* fm_ring;                    // fm_ring_size stereo frames
++	unsigned fm_rd, fm_wr;             // ring positions in frames (wrapping)
++	int64_t fm_clk;                    // CPU clocks emulated since the track started
++	int64_t fm_done;                   // FM frames generated since then
++	struct fm_ev_t { int32_t t; byte a, d; } fm_evs [fm_ev_max];   // port writes of the frame being emulated (time = CPU clocks into it)
++	int fm_nev;
++	byte fm_latch;
++	void fm_gen( long frames );
++	void fm_render( blip_time_t duration );
++
+ 	Ay_Apu ay;
+ 	Scc_Apu scc;
+ 	Sms_Apu* sn;

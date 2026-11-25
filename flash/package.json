@@ -1,0 +1,16 @@
+{
+  "name": "nightstand-nano-flash",
+  "version": "1.0.0",
+  "private": true,
+  "description": "NightStand Nano flashing and hardware-setup page (Web Serial): sources in src/, committed build in dist/",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node build.mjs --dev",
+    "test": "node --test test/",
+    "check": "node check.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}

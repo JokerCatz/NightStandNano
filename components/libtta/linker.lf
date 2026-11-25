@@ -1,0 +1,6 @@
+# libtta keeps its decoder state in file-level statics (about 8 KB with the FIFO buffer and the jump buffer): they go to PSRAM with the other
+# zero-initialised statics (the component is compiled with -msmall-data-limit=0 so even the small ones are .bss).
+[mapping:tta_extram_bss]
+archive: liblibtta.a
+entries:
+    * (extram_bss)

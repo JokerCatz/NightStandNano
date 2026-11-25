@@ -1,0 +1,26 @@
+diff --git a/libcRSID/libcRSID.c b/libcRSID/libcRSID.c
+index 3e149e1..a0f0944 100644
+--- a/libcRSID/libcRSID.c
++++ b/libcRSID/libcRSID.c
+@@ -50,7 +50,7 @@ cRSID_C64instance* cRSID_init (unsigned short samplerate, unsigned short buflen)
+ 
+ 
+ 
+-void cRSID_initSIDtune (cRSID_C64instance* C64, cRSID_SIDheader* SIDheader, char subtune) { //subtune: 1..255
++void cRSID_initSIDtune (cRSID_C64instance* C64, cRSID_SIDheader* SIDheader, int subtune) { //subtune: 1..255
+  static const unsigned char PowersOf2[] = {0x01,0x02,0x04,0x08,0x10,0x20,0x40,0x80};
+  unsigned int InitTimeout=10000000; //allowed instructions, value should be selected to allow for long-running memory-copiers in init-routines (e.g. Synth Sample)
+ 
+diff --git a/libcRSID/libcRSID.h b/libcRSID/libcRSID.h
+index 5029ca4..29e767f 100644
+--- a/libcRSID/libcRSID.h
++++ b/libcRSID/libcRSID.h
+@@ -139,7 +139,7 @@ typedef struct cRSID_C64instance cRSID_C64instance;
+ // Main public API functions (mainly in libcRSID.c)
+ cRSID_C64instance* cRSID_init           (unsigned short samplerate, unsigned short buflen); //ChipChill: allocates an instance (NULL if out of memory)
+ cRSID_SIDheader* cRSID_processSIDfileData (cRSID_C64instance* C64, unsigned char* filedata, int filesize); //in host/file.c, copy SID-data to C64 memory
+-void               cRSID_initSIDtune    (cRSID_C64instance* C64, cRSID_SIDheader* SIDheader, char subtune); //init tune/subtune
++void               cRSID_initSIDtune    (cRSID_C64instance* C64, cRSID_SIDheader* SIDheader, int subtune); //init tune/subtune (ChipChill: int, was char: signed on x86, so subtunes above 127 went negative)
+ void               cRSID_generateSound  (cRSID_C64instance* C64, FASTVAR unsigned char *buf, FASTVAR unsigned short len);
+ cRSID_Output       cRSID_generateSample (cRSID_C64instance* C64); //in host/audio.c, calculate a single sample
+ void               cRSID_close          (cRSID_C64instance* C64); //ChipChill: frees the instance

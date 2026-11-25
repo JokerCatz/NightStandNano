@@ -1,0 +1,827 @@
+diff --git a/components/libadplug/adplug/a2m-v2.cpp b/components/libadplug/adplug/a2m-v2.cpp
+index 36740d6..23fdfa7 100644
+--- a/components/libadplug/adplug/a2m-v2.cpp
++++ b/components/libadplug/adplug/a2m-v2.cpp
+@@ -3829,6 +3829,9 @@ bool Ca2mv2Player::a2t_import(char *tune, unsigned long size)
+     blockptr += result;
+ 
+     // Allocate patterns
++    // libadplug patch 0004: nm_tracks indexes ch[20]-sized tables, patt_len/npatt size the event array (32-bit overflow)
++    if (songinfo->nm_tracks < 1 || songinfo->nm_tracks > 20 || songinfo->patt_len < 1 || songinfo->patt_len > 256 || header->npatt > 128)
++        return false;
+     patterns_allocate(header->npatt, songinfo->nm_tracks, songinfo->patt_len);
+ 
+     // Read patterns
+@@ -4027,6 +4030,9 @@ bool Ca2mv2Player::a2m_import(char *tune, unsigned long size)
+     blockptr += result;
+ 
+     // Allocate patterns
++    // libadplug patch 0004: nm_tracks indexes ch[20]-sized tables, patt_len/npatt size the event array (32-bit overflow)
++    if (songinfo->nm_tracks < 1 || songinfo->nm_tracks > 20 || songinfo->patt_len < 1 || songinfo->patt_len > 256 || header->npatt > 128)
++        return false;
+     patterns_allocate(header->npatt, songinfo->nm_tracks, songinfo->patt_len);
+ 
+     // Read patterns
+diff --git a/components/libadplug/adplug/bam.cpp b/components/libadplug/adplug/bam.cpp
+index 0b4bf47..7730296 100644
+--- a/components/libadplug/adplug/bam.cpp
++++ b/components/libadplug/adplug/bam.cpp
+@@ -71,12 +71,13 @@ bool CbamPlayer::load(const std::string &filename, const CFileProvider &fp)
+ 	char id[4];
+ 	unsigned int i;
+ 
++	if(fp.filesize(f) < 4) { fp.close(f); return false; }   // libadplug patch 0004: size underflow
+ 	size = fp.filesize(f) - 4;	// filesize minus header
+ 	f->readString(id, 4);
+ 	if(strncmp(id,"CBMF",4)) { fp.close(f); return false; }
+ 
+-	song = new unsigned char [size + 8];   // libadplug patch 0001: 8 zero bytes so a command at the very end reads zeros, not heap
+-	memset(song, 0, size + 8);
++	song = new unsigned char [size + 16];   // libadplug patch 0001: zero tail so a command at the very end reads zeros, not heap; patch 0004: 16 (define-instrument reads pos+11)
++	memset(song, 0, size + 16);
+ 	for(i = 0; i < size; i++) song[i] = f->readInt(1);
+ 
+ 	fp.close(f);
+diff --git a/components/libadplug/adplug/coktel.cpp b/components/libadplug/adplug/coktel.cpp
+index fa309c6..081fcd4 100644
+--- a/components/libadplug/adplug/coktel.cpp
++++ b/components/libadplug/adplug/coktel.cpp
+@@ -245,7 +245,7 @@ bool CcoktelPlayer::update()
+ 	{
+ 		ticks = data[pos++];
+ 		if (ticks & 0x80)
+-			ticks = ((ticks & ~0x80) << 8) | data[pos++];
++			ticks = ((ticks & ~0x80) << 8) | (pos < size ? data[pos] : 0), pos++;   // libadplug patch 0004: a long delay as the last byte
+ 		if (ticks && !first_tick)
+ 		{
+ 			// skip first delay
+diff --git a/components/libadplug/adplug/composer.cpp b/components/libadplug/adplug/composer.cpp
+index 4b88e40..3fa5006 100644
+--- a/components/libadplug/adplug/composer.cpp
++++ b/components/libadplug/adplug/composer.cpp
+@@ -148,7 +148,7 @@ CcomposerBackend::CcomposerBackend(Copl * const pNewOpl)
+     , mVolumeCache       (kNumPercussiveVoices, kMaxVolume)
+     , mKSLTLCache        (kNumPercussiveVoices, 0)
+     , mNoteCache         (kNumPercussiveVoices, 0)
+-    , mKOnOctFNumCache   (kNumMelodicVoices, 0)
++    , mKOnOctFNumCache   (kNumPercussiveVoices, 0)   // libadplug patch 0004: voices 9/10 reach SetFreq() when rhythm mode is off
+     , mKeyOnCache        (kNumPercussiveVoices, false)
+     , mRhythmMode        (0)
+     , mOldPitchBendLength(~0)
+@@ -164,7 +164,7 @@ void CcomposerBackend::rewind(int subsong)
+     mVolumeCache     = TUInt8Vector(kNumPercussiveVoices, kMaxVolume);
+     mKSLTLCache      = TUInt8Vector(kNumPercussiveVoices, 0);
+     mNoteCache       = TUInt8Vector(kNumPercussiveVoices, 0);
+-    mKOnOctFNumCache = TUInt8Vector(kNumMelodicVoices, 0);
++    mKOnOctFNumCache = TUInt8Vector(kNumPercussiveVoices, 0);   // libadplug patch 0004: see the constructor
+     mKeyOnCache      = TBoolVector(kNumPercussiveVoices, false);
+ 
+     opl->init();         // initialize to melodic by default
+@@ -361,6 +361,7 @@ void CcomposerBackend::SetInstrument(int const voice, int const ins_index)
+         AdPlug_LogWrite ("COMPOSER: SetInstrument() !mRhythmMode voice %d >= %d\n", voice, kNumMelodicVoices);
+         return;
+     }
++    if (voice < 0 || voice >= kNumPercussiveVoices || ins_index < 0 || (size_t)ins_index >= mInstrumentList.size()) return;   // libadplug patch 0005: voice / instrument index come from the file
+     SInstrumentData const & instrument = mInstrumentList[ins_index].instrument;
+ 
+     send_operator(voice, instrument.modulator, instrument.carrier);
+diff --git a/components/libadplug/adplug/d00.cpp b/components/libadplug/adplug/d00.cpp
+index eb68a3b..6090482 100644
+--- a/components/libadplug/adplug/d00.cpp
++++ b/components/libadplug/adplug/d00.cpp
+@@ -183,6 +183,7 @@ bool Cd00Player::update()
+ {
+   unsigned char	c,cnt,trackend=0,fx,note;
+   unsigned short ord,*patt,buf,fxop,pattpos;
++  unsigned long guard = 0;   // libadplug patch 0005: order jumps / empty patterns that lead back to themselves never leave readorder/readseq
+ 
+   // effect handling (timer dependent)
+   for(c=0;c<9;c++) {
+@@ -210,6 +211,7 @@ bool Cd00Player::update()
+ 	channel[c].freq = notetable[note%12] + ((note/12) << 10);
+ 	setfreq(c);
+       }
++      if (!INDEX_OK(spfx, channel[c].spfx)) { channel[c].spfx = 0xffff; break; }   // libadplug patch 0005: spfx index not validated on first use
+       channel[c].modvol += spfx[channel[c].spfx].modlevadd; channel[c].modvol &= 63;
+       setvolume(c);
+     } while (0);
+@@ -223,6 +225,7 @@ bool Cd00Player::update()
+ 	  channel[c].fxdel--;
+ 	else if (INDEX_OK(levpuls, channel[c].levpuls)) {
+ 	  channel[c].levpuls = levpuls[channel[c].levpuls].ptr - 1;
++	  if (!INDEX_OK(levpuls, channel[c].levpuls)) { channel[c].levpuls = 0xff; continue; }   // libadplug patch 0005: the new index comes from the file
+ 	  channel[c].fxdel = levpuls[channel[c].levpuls].duration;
+ 	  if(levpuls[channel[c].levpuls].level != 0xff)
+ 	    channel[c].modvol = levpuls[channel[c].levpuls].level;
+@@ -236,7 +239,7 @@ bool Cd00Player::update()
+   // song handling
+   for(c=0;c<9;c++)
+     if(version < 3 ? channel[c].del : channel[c].del <= 0x7f) {
+-      if(version == 4)	// v4: hard restart SR
++      if(version == 4 && INDEX_OK(inst, channel[c].inst))	// v4: hard restart SR   (libadplug patch 0005: inst index checked)
+ 	if(channel[c].del == inst[channel[c].inst].timer)
+ 	  if(channel[c].nextnote)
+ 	    opl->write(0x83 + op_table[c], inst[channel[c].inst].sr);
+@@ -266,6 +269,7 @@ bool Cd00Player::update()
+ 	continue;
+       }
+     readorder:	// process arrangement (orderlist)
++      if (++guard > 20000) { channel[c].speed = 0; channel[c].seqend = 1; continue; }
+       if (!INDEX_OK(channel[c].order, channel[c].ordpos)) {
+ 	channel[c].seqend = 1; continue;
+       }
+@@ -303,6 +307,7 @@ bool Cd00Player::update()
+       }
+     channel[c].fxflag = 0;
+     readseq:	// process sequence (pattern)
++      if (++guard > 20000) { channel[c].speed = 0; channel[c].seqend = 1; continue; }
+       if(!version)	// v0: always initialize rhcnt
+ 	channel[c].rhcnt = channel[c].irhcnt;
+       pattpos = INDEX_OK(patt, channel[c].pattpos) ?
+@@ -359,7 +364,7 @@ bool Cd00Player::update()
+ 	      channel[c].fxdel = spfx[channel[c].spfx].duration;
+ 	      if(spfx[channel[c].spfx].modlev != 0xff)
+ 		channel[c].modvol = spfx[channel[c].spfx].modlev;
+-	      else
++	      else if (INDEX_OK(inst, channel[c].inst))   // libadplug patch 0005
+ 		channel[c].modvol = inst[channel[c].inst].data[7] & 63;
+ 	    }
+ 
+@@ -371,7 +376,7 @@ bool Cd00Player::update()
+ 	      channel[c].frameskip = inst[channel[c].inst].timer;
+ 	      if(levpuls[channel[c].levpuls].level != 0xff)
+ 		channel[c].modvol = levpuls[channel[c].levpuls].level;
+-	      else
++	      else if (INDEX_OK(inst, channel[c].inst))   // libadplug patch 0005
+ 		channel[c].modvol = inst[channel[c].inst].data[7] & 63;
+ 	    }
+ 
+diff --git a/components/libadplug/adplug/herad.cpp b/components/libadplug/adplug/herad.cpp
+index cba9936..e1efb35 100644
+--- a/components/libadplug/adplug/herad.cpp
++++ b/components/libadplug/adplug/herad.cpp
+@@ -697,9 +697,12 @@ bool CheradPlayer::load(const std::string &filename, const CFileProvider &fp)
+ 		uint16_t next = (i < HERAD_MAX_TRACKS - 1) ? u16_unaligned(data + 2 + (i + 1) * 2) + 2 : u16_unaligned(data);
+ 		if (next <= 2) next = u16_unaligned(data);
+ 
+-		track[i].size = next - offset;
+-		track[i].data = new uint8_t[track[i].size];
+-		memcpy(track[i].data, data + offset, track[i].size);
++		if (next > size) next = size;   // libadplug patch 0007: a track offset past the file / before its start
++		track[i].size = (offset < next) ? next - offset : 0;
++		if (track[i].size > 0xFF00) track[i].size = 0xFF00;   // libadplug patch 0007: pos (16 bit) must not wrap
++		track[i].data = new uint8_t[track[i].size + 8];   // libadplug patch 0007: zero padding, a truncated event reads zeros
++		memset(track[i].data, 0, track[i].size + 8);
++		if (track[i].size) memcpy(track[i].data, data + offset, track[i].size);
+ 	}
+ 	inst = new herad_inst[nInsts];
+ 	offset = u16_unaligned(data);
+diff --git a/components/libadplug/adplug/ksm.cpp b/components/libadplug/adplug/ksm.cpp
+index 67259c7..49b0720 100644
+--- a/components/libadplug/adplug/ksm.cpp
++++ b/components/libadplug/adplug/ksm.cpp
+@@ -24,14 +24,15 @@
+ #include "ksm.h"
+ #include "debug.h"
+ 
+-const unsigned int CksmPlayer::adlibfreq[63] = {
++const unsigned int CksmPlayer::adlibfreq[64] = {
+   0,
+   2390,2411,2434,2456,2480,2506,2533,2562,2592,2625,2659,2695,
+   3414,3435,3458,3480,3504,3530,3557,3586,3616,3649,3683,3719,
+   4438,4459,4482,4504,4528,4554,4581,4610,4640,4673,4707,4743,
+   5462,5483,5506,5528,5552,5578,5605,5634,5664,5697,5731,5767,
+   6486,6507,6530,6552,6576,6602,6629,6658,6688,6721,6755,6791,
+-  7510};
++  7510,
++  7510};   // libadplug patch 0005: 64th entry, the index is (note & 63)
+ 
+ /*** public methods **************************************/
+ 
+@@ -79,6 +80,7 @@ bool CksmPlayer::load(const std::string &filename, const CFileProvider &fp)
+   f->ignore(16);
+   for(i = 0; i < 16; i++) trvol[i] = f->readInt(1);
+   numnotes = f->readInt(2);
++  if(!numnotes) { fp.close(f); return false; }   // libadplug patch 0005: no notes (rewind() reads note[0])
+   note = new unsigned long [numnotes];
+   for(i = 0; i < numnotes; i++) note[i] = f->readInt(4);
+   fp.close(f);
+@@ -106,8 +108,10 @@ bool CksmPlayer::update()
+   if (count >= countstop)
+     {
+       bufnum = 0;
++      unsigned long guard = 0;   // libadplug patch 0005: bound the work of one tick (databuf is 2048 bytes; a song with all notes at one time never leaves the loop)
+       while (count >= countstop)
+ 	{
++	  if (bufnum > sizeof(databuf) - 64 || ++guard > 2UL * numnotes + 16) break;
+ 	  templong = note[nownote];
+ 	  track = (int)((templong>>8)&15);
+ 	  if ((templong&192) == 0)
+@@ -220,7 +224,8 @@ bool CksmPlayer::update()
+ 	  templong = note[nownote];
+ 	  if (nownote == 0)
+ 	    count = (templong>>12)-1;
+-	  quanter = (240/trquant[(templong>>8)&15]);
++	  quanter = trquant[(templong>>8)&15] ? (240/trquant[(templong>>8)&15]) : 1;   // libadplug patch 0005: quant 0 / above 240
++	  if (quanter < 1) quanter = 1;
+ 	  countstop = (((templong>>12)+(quanter>>1)) / quanter) * quanter;
+ 	}
+       for(i=0;i<bufnum;i+=3)
+diff --git a/components/libadplug/adplug/ksm.h b/components/libadplug/adplug/ksm.h
+index bd0dce0..b926263 100644
+--- a/components/libadplug/adplug/ksm.h
++++ b/components/libadplug/adplug/ksm.h
+@@ -45,7 +45,7 @@ public:
+ 	std::string getinstrument(unsigned int n);
+ 
+ private:
+-	static const unsigned int adlibfreq[63];
++	static const unsigned int adlibfreq[64];
+ 
+ 	unsigned long count,countstop,chanage[18],*note;
+ 	unsigned short numnotes;
+diff --git a/components/libadplug/adplug/lds.cpp b/components/libadplug/adplug/lds.cpp
+index bd1f88a..0bd46aa 100644
+--- a/components/libadplug/adplug/lds.cpp
++++ b/components/libadplug/adplug/lds.cpp
+@@ -628,6 +628,7 @@ void CldsPlayer::playsound(int inst_number, int channel_number, int tunehigh)
+   setregs(0xc0 + channel_number, i->feedback);
+   setregs_adv(0xb0 + channel_number, 0xdf, 0);		// key off
+ 
++  if(tunehigh < 0) tunehigh = 0;   // libadplug patch 0006: negative note + finetune/arpeggio indexed the frequency table below 0
+   freq = frequency[tunehigh % (12 * 16)];
+   octave = tunehigh / (12 * 16) - 1;
+   if(!i->glide) {
+@@ -674,6 +675,7 @@ void CldsPlayer::playsound(int inst_number, int channel_number, int tunehigh)
+   }
+ 
+   c->arp_size = i->arpeggio & 15;
++  if(c->arp_size > 12) c->arp_size = 12;   // libadplug patch 0006: arp_tab has 12 entries
+   c->arp_speed = i->arpeggio >> 4;
+   memcpy(c->arp_tab, i->arp_tab, 12);
+   c->keycount = i->keyoff;
+diff --git a/components/libadplug/adplug/mdi.cpp b/components/libadplug/adplug/mdi.cpp
+index b7566bd..577fa94 100644
+--- a/components/libadplug/adplug/mdi.cpp
++++ b/components/libadplug/adplug/mdi.cpp
+@@ -88,7 +88,8 @@ bool CmdiPlayer::load(const std::string &filename, const CFileProvider &fp)
+ 		return false;
+ 	}
+ 	// load section
+-	data = new uint8_t[size];
++	data = new uint8_t[(size_t)size + 8];   // libadplug patch 0005: 8 zero bytes so a command cut off by the end of the data reads zeros, not heap
++	memset(data + size, 0, 8);
+ 	f->readString((char *)data, size);
+ 
+ 	fp.close(f);
+@@ -156,6 +157,8 @@ void CmdiPlayer::executeCommand()
+ 	{
+ 		/* skip over system exclusive event */
+ 		len = GetVarVal();
++		if (pos > size) pos = size;   // libadplug patch 0005: a length past the end ends the song (and cannot wrap a 32-bit pos)
++		if (len > size - pos) len = size - pos;
+ 		pos += len;
+ 	}
+ 	else if (new_status == META)
+@@ -163,6 +166,8 @@ void CmdiPlayer::executeCommand()
+ 		/* Process meta-event */
+ 		meta = data[pos++];
+ 		len = GetVarVal();
++		if (pos > size) pos = size;   // libadplug patch 0005: clamp the event length to the data
++		if (len > size - pos) len = size - pos;
+ 		switch (meta)
+ 		{
+ 		case END_OF_TRACK:
+@@ -297,6 +302,7 @@ void CmdiPlayer::executeCommand()
+ 
+ bool CmdiPlayer::update()
+ {
++	if (pos >= size) { pos = 0; songend = true; }   // libadplug patch 0005: the last delay byte (0) left pos at the end; each tick then read one byte further
+ 	if (!counter)
+ 	{
+ 		ticks = GetVarVal();
+diff --git a/components/libadplug/adplug/mid.cpp b/components/libadplug/adplug/mid.cpp
+index 46e0e50..d187b0a 100644
+--- a/components/libadplug/adplug/mid.cpp
++++ b/components/libadplug/adplug/mid.cpp
+@@ -170,6 +170,8 @@ unsigned long CmidPlayer::getnext(unsigned long num)
+ 	unsigned long v=0;
+ 	unsigned long i;
+ 
++    if (num > 8) { unsigned long np = pos + num; pos = np < pos ? flen : np; return 0; }   // libadplug patch 0005: a skip of 'negative' / huge length (l-26) looped 2^64 times; only the last 8 bytes could matter anyway
++
+     for (i=0; i<num; i++)
+         {
+         v<<=8;
+diff --git a/components/libadplug/adplug/mkj.cpp b/components/libadplug/adplug/mkj.cpp
+index 7680d44..d7e80e3 100644
+--- a/components/libadplug/adplug/mkj.cpp
++++ b/components/libadplug/adplug/mkj.cpp
+@@ -97,7 +97,9 @@ bool CmkjPlayer::update()
+     }
+ 
+     opl->write(0xb0 + c, 0);	// key off
++    int guard = 0;   // libadplug patch 0005: a song whose notes never set a delay (speed 0) loops forever in the do-while
+     do {
++      if (++guard > 2 * maxnotes + 16) goto bad_data;   // one full cycle through the channel without a delay: the song cannot advance, end it
+       if(channel[c].songptr >= (maxchannel + 1) * maxnotes) channel[c].songptr = 0;   // libadplug patch 0001: was an assert
+       note = songbuf[channel[c].songptr];
+       if(channel[c].songptr - c > maxchannel)
+@@ -119,24 +121,28 @@ bool CmkjPlayer::update()
+       case 15: opl->write(0xa0 + c,0x63); opl->write(0xb0 + c,0x22 + 4 * channel[c].octave); break;
+       case 255:	// delay
+ 	channel[c].songptr += maxchannel;
++        if (channel[c].songptr >= (maxchannel + 1) * maxnotes) goto bad_data;   // libadplug patch 0005: the argument lies past the song
+         if (songbuf[channel[c].songptr] < 0)
+           goto bad_data; // avoid integer overflow
+ 	channel[c].pstat = songbuf[channel[c].songptr];
+ 	break;
+       case 254:	// set octave
+ 	channel[c].songptr += maxchannel;
++        if (channel[c].songptr >= (maxchannel + 1) * maxnotes) goto bad_data;   // libadplug patch 0005: the argument lies past the song
+         if ((songbuf[channel[c].songptr] | 7) != 7)
+           goto bad_data; // value out of range
+ 	channel[c].octave = songbuf[channel[c].songptr];
+ 	break;
+       case 253:	// set speed
+ 	channel[c].songptr += maxchannel;
++        if (channel[c].songptr >= (maxchannel + 1) * maxnotes) goto bad_data;   // libadplug patch 0005: the argument lies past the song
+         if (songbuf[channel[c].songptr] < 0)
+           goto bad_data; // avoid integer overflow
+ 	channel[c].speed = songbuf[channel[c].songptr];
+ 	break;
+       case 252:	// set waveform
+ 	channel[c].songptr += maxchannel;
++        if (channel[c].songptr >= (maxchannel + 1) * maxnotes) goto bad_data;   // libadplug patch 0005: the argument lies past the song
+         if (((songbuf[channel[c].songptr] - 300) | 0xff) != 0xff)
+           goto bad_data; // value out of range
+ 	channel[c].waveform = songbuf[channel[c].songptr] - 300;
+diff --git a/components/libadplug/adplug/msc.cpp b/components/libadplug/adplug/msc.cpp
+index 821fda5..3ce3255 100644
+--- a/components/libadplug/adplug/msc.cpp
++++ b/components/libadplug/adplug/msc.cpp
+@@ -230,7 +230,7 @@ bool CmscPlayer::decode_octet(u8 * output)
+       // decode prefix
+     case 155:
+     case 175:
+-      octet = blk.mb_data [block_pos++];
++      octet = (block_pos < blk.mb_length) ? blk.mb_data [block_pos] : 0; block_pos++;   // libadplug patch 0007: read past the block
+       if (octet == 0) {
+ 	// invalid prefix, output original
+ 	octet = dec_prefix;
+@@ -254,7 +254,7 @@ bool CmscPlayer::decode_octet(u8 * output)
+       // check for extended length
+     case 156:
+       if (dec_len == 15)
+-	dec_len += blk.mb_data [block_pos++];
++	{ dec_len += (block_pos < blk.mb_length) ? blk.mb_data [block_pos] : 0; block_pos++; }   // libadplug patch 0007: read past the block
+ 
+       // add length correction and go for copy mode
+       dec_len += len_corr;
+@@ -264,7 +264,7 @@ bool CmscPlayer::decode_octet(u8 * output)
+ 			
+       // get extended distance
+     case 176:
+-      dec_dist += 17 + 16 * blk.mb_data [block_pos++];
++      dec_dist += 17 + 16 * ((block_pos < blk.mb_length) ? blk.mb_data [block_pos] : 0); block_pos++;   // libadplug patch 0007: read past the block
+       len_corr = 3;
+ 			
+       // check for extended length
+@@ -292,7 +292,7 @@ bool CmscPlayer::decode_octet(u8 * output)
+ 			
+       // normal mode
+     default:
+-      octet = blk.mb_data [block_pos++];
++      octet = (block_pos < blk.mb_length) ? blk.mb_data [block_pos] : 0; block_pos++;   // libadplug patch 0007: read past the block
+       if (octet == 155 || octet == 175) {
+ 	// it's a prefix, restart
+ 	dec_prefix = octet;
+diff --git a/components/libadplug/adplug/mus.cpp b/components/libadplug/adplug/mus.cpp
+index a136fa4..8c9e597 100644
+--- a/components/libadplug/adplug/mus.cpp
++++ b/components/libadplug/adplug/mus.cpp
+@@ -116,7 +116,8 @@ bool CmusPlayer::load(const std::string &filename, const CFileProvider &fp)
+ 	}
+ 
+ 	// read MIDI data
+-	data = new uint8_t[dataSize];
++	data = new uint8_t[(size_t)dataSize + 8];   // libadplug patch 0005: 8 zero bytes so a command cut off by the end of the data reads zeros, not heap
++	memset(data + dataSize, 0, 8);
+ 	f->readString((char *)data, dataSize);
+ 
+ 	// read IMS timbre list (if exists)
+@@ -352,7 +353,7 @@ void CmusPlayer::SetTempo(uint16_t tempo, uint8_t tickBeat)
+ uint32_t CmusPlayer::GetTicks()
+ {
+ 	uint32_t ticks = 0;
+-	while (data[pos] == OVERFLOW_BYTE && pos < dataSize)
++	while (pos < dataSize && data[pos] == OVERFLOW_BYTE)   // libadplug patch 0005: bounds check first
+ 	{
+ 		ticks += OVERFLOW_TICKS;
+ 		pos++;
+@@ -517,6 +518,7 @@ void CmusPlayer::executeCommand()
+ 
+ bool CmusPlayer::update()
+ {
++	if (pos >= dataSize) { pos = 0; songend = true; }   // libadplug patch 0005: the last delay byte (0) left pos at the end; each tick then read one byte further
+ 	if (!counter)
+ 	{
+ 		ticks = GetTicks();
+diff --git a/components/libadplug/adplug/pis.cpp b/components/libadplug/adplug/pis.cpp
+index a732de0..fae93dd 100644
+--- a/components/libadplug/adplug/pis.cpp
++++ b/components/libadplug/adplug/pis.cpp
+@@ -145,7 +145,7 @@ void CpisPlayer::replay_enter_row_with_portamento(int v, PisVoiceState *vs, PisR
+     if (HAS_NOTE(r)) {
+         vs->porta_src_freq = vs->frequency;
+         vs->porta_src_octave = vs->octave;
+-        vs->porta_dest_freq = frequency_table[r->note];
++        vs->porta_dest_freq = frequency_table[(unsigned)(r->note) % 12u];
+         vs->porta_dest_octave = r->octave;
+ 
+         if (vs->porta_dest_octave < vs->octave) {
+@@ -395,25 +395,26 @@ void CpisPlayer::replay_do_per_frame_portamento(int v, PisVoiceState *vs) {
+     opl_set_pitch(v, vs->frequency, vs->octave);
+ }
+ 
++// libadplug patch 0007: every frequency_table[] index below is reduced mod 12 (a note nibble 12..15 / an arpeggio past the octave indexed outside the table)
+ void CpisPlayer::replay_handle_arpeggio(int v, PisVoiceState *vs, PisRowUnpacked *r) {
+     int an1, an2;
+     if (EFFECT_LO(r) != (vs->previous_effect & 0xff)) {
+-        vs->arpeggio_freq[0] = frequency_table[vs->note];
++        vs->arpeggio_freq[0] = frequency_table[(unsigned)(vs->note) % 12u];
+         vs->arpeggio_octave[0] = vs->octave;
+         an1 = vs->note + EFFECT_MIDNIB(r);
+         an2 = vs->note + EFFECT_LONIB(r);
+         if (IS_NOTE(an1)) {
+-            vs->arpeggio_freq[1] = frequency_table[an1];
++            vs->arpeggio_freq[1] = frequency_table[(unsigned)(an1) % 12u];
+             vs->arpeggio_octave[1] = vs->octave;
+         } else {
+-            vs->arpeggio_freq[1] = frequency_table[an1 - 12];
++            vs->arpeggio_freq[1] = frequency_table[(unsigned)(an1 - 12) % 12u];
+             vs->arpeggio_octave[1] = vs->octave + 1;
+         }
+         if (IS_NOTE(an2)) {
+-            vs->arpeggio_freq[2] = frequency_table[an2];
++            vs->arpeggio_freq[2] = frequency_table[(unsigned)(an2) % 12u];
+             vs->arpeggio_octave[2] = vs->octave;
+         } else {
+-            vs->arpeggio_freq[2] = frequency_table[an2 - 12];
++            vs->arpeggio_freq[2] = frequency_table[(unsigned)(an2 - 12) % 12u];
+             vs->arpeggio_octave[2] = vs->octave + 1;
+         }
+         vs->arpeggio_flag = 1;
+@@ -443,7 +444,7 @@ void CpisPlayer::replay_handle_speed(int v, PisRowUnpacked *r) {
+ }
+ 
+ void CpisPlayer::replay_set_note(int v, PisVoiceState *vs, PisRowUnpacked *r) {
+-    int frequency = frequency_table[r->note];
++    int frequency = frequency_table[(unsigned)(r->note) % 12u];
+     opl_set_pitch(v, frequency, r->octave);
+     vs->note = r->note;
+     vs->octave = r->octave;
+@@ -492,9 +493,9 @@ void CpisPlayer::unpack_row() {
+     uint8_t b1, b2, el;
+ 
+     for (int v = 0; v < 9; v++) {
+-        pattern_index = module.order[replay_state.position][v];
++        pattern_index = module.order[replay_state.position & 255][v] & 127;   // libadplug patch 0007: pattern index into pattern[128]
+         pptn = module.pattern[pattern_index];
+-        packed = pptn[replay_state.row];
++        packed = pptn[replay_state.row & 63];   // libadplug patch 0007: row of a break to 64..255
+ 
+         el = packed & 0xff;
+         packed >>= 8;
+@@ -532,7 +533,7 @@ void CpisPlayer::advance_row() {
+         // Pattern break
+         //
+         replay_state.position++;
+-        if (replay_state.position == module.length) {
++        if (replay_state.position >= module.length) {   // libadplug patch 0007: a jump past the order list
+             replay_state.position = 0;
+             is_playing = 0;
+         }
+@@ -543,10 +544,10 @@ void CpisPlayer::advance_row() {
+         // Simple row advance
+         //
+         replay_state.row++;
+-        if (replay_state.row == 64) {
++        if (replay_state.row >= 64) {   // libadplug patch 0007: a pattern break to row 64..255 never wrapped, the row grew without bound
+             replay_state.row = 0;
+             replay_state.position++;
+-            if (replay_state.position == module.length) {
++            if (replay_state.position >= module.length) {   // libadplug patch 0007: a jump past the order list
+                 replay_state.position = 0;
+                 is_playing = 0;
+             }
+@@ -564,6 +565,10 @@ void CpisPlayer::load_module(binistream *f, PisModule *pmodule) {
+     pmodule->length = f->readInt(1);
+     pmodule->number_of_patterns = f->readInt(1);
+     pmodule->number_of_instruments = f->readInt(1);
++    if (pmodule->number_of_patterns > 128 || pmodule->number_of_instruments > 32) {   // libadplug patch 0007: the maps hold 128 / 32 entries
++        pmodule->length = 0;   // load() refuses a module with no order list
++        return;
++    }
+ 
+     for (i = 0; i < pmodule->number_of_patterns; i++) {
+         pmodule->pattern_map[i] = f->readInt(1);
+@@ -576,12 +581,12 @@ void CpisPlayer::load_module(binistream *f, PisModule *pmodule) {
+     f->readString((char *)pmodule->order, 9 * pmodule->length);
+ 
+     for (i = 0; i < pmodule->number_of_patterns; i++) {
+-        j = pmodule->pattern_map[i];
++        j = pmodule->pattern_map[i] & 127;   // libadplug patch 0007
+         load_pattern(pmodule->pattern[j], f);
+     }
+ 
+     for (i = 0; i < pmodule->number_of_instruments; i++) {
+-        j = pmodule->instrument_map[i];
++        j = pmodule->instrument_map[i] & 63;   // libadplug patch 0007
+         load_instrument(&pmodule->instrument[j], f);
+     }
+ }
+@@ -669,6 +674,7 @@ bool CpisPlayer::load(const std::string &filename, const CFileProvider &fp) {
+     }
+ 
+     load_module(f, &module);
++    if (!module.length) { fp.close(f); return false; }   // libadplug patch 0007: refused by load_module
+ 
+     fp.close(f);
+ 
+diff --git a/components/libadplug/adplug/protrack.cpp b/components/libadplug/adplug/protrack.cpp
+index 6e555fb..1487909 100644
+--- a/components/libadplug/adplug/protrack.cpp
++++ b/components/libadplug/adplug/protrack.cpp
+@@ -43,9 +43,9 @@ const unsigned char CmodPlayer::vibratotab[32] =
+ /*** public methods *************************************/
+ 
+ CmodPlayer::CmodPlayer(Copl *newopl)
+-  : CPlayer(newopl), inst(0), order(0), arplist(0), arpcmd(0), initspeed(6),
++  : CPlayer(newopl), inst(0), tracks(0), order(0), arplist(0), arpcmd(0), initspeed(6),
+     nop(0), activechan(0xffffffff), flags(Standard), curchip(opl->getchip()),
+-    nrows(0), npats(0), nchans(0)
++    trackord(0), nrows(0), npats(0), nchans(0)
+ {
+   realloc_order(128);
+   realloc_patterns(64, 64, 9);
+@@ -195,6 +195,7 @@ bool CmodPlayer::update()
+   // arrangement handling
+   if(!resolve_order()) return !songend;
+   pattnr = order[ord];
++  if(pattnr >= npats || rw >= nrows) { songend = 1; rw = 0; return false; }   // libadplug patch 0005: order names a pattern / row that was not allocated
+ 
+   if(!rw) AdPlug_LogWrite("\nCmodPlayer::update(): Pattern: %d, Order: %d\n", pattnr, ord);
+   AdPlug_LogWrite("CmodPlayer::update():%3d|", rw);
+@@ -205,7 +206,7 @@ bool CmodPlayer::update()
+   for(chan = 0; chan < nchans; chan++) {
+     oplchan = set_opl_chip(chan);
+ 
+-    if(!((activechan >> (31 - chan)) & 1)) {	// channel active?
++    if(chan < 32 && !((activechan >> (31 - chan)) & 1)) {	// channel active? (libadplug patch 0006: a shift by a negative count for channels >= 32)
+       AdPlug_LogWrite("N/A|");
+       continue;
+     }
+@@ -214,13 +215,14 @@ bool CmodPlayer::update()
+       continue;
+     } else
+       track--;
++    if(track >= npats * nchans) continue;   // libadplug patch 0005: track number outside the allocated tracks
+ 
+     AdPlug_LogWrite("%3d%3d%2X%2X%2X|", tracks[track][row].note,
+ 		    tracks[track][row].inst, tracks[track][row].command,
+ 		    tracks[track][row].param1, tracks[track][row].param2);
+ 
+     donote = 0;
+-    if(tracks[track][row].inst) {
++    if(tracks[track][row].inst && tracks[track][row].inst <= ninst) {   // libadplug patch 0006: instrument number past the allocated table is ignored
+       channel[chan].inst = tracks[track][row].inst - 1;
+       if (!(flags & Faust)) {
+ 	channel[chan].vol1 = 63 - (inst[channel[chan].inst].data[10] & 63);
+@@ -488,7 +490,9 @@ bool CmodPlayer::resolve_order()
+ {
+   if(!length) { songend = 1; return false; }   // libadplug patch 0001: damaged orders (empty list, jump or restart past the end)
+   if(ord < length) {
++    unsigned long hops = 0;
+     while(order[ord] >= JUMPMARKER) {	// jump to order
++      if (++hops > length) { songend = 1; ord = 0; return false; }   // libadplug patch 0005: jumps A -> B -> A never ended
+       unsigned long neword = order[ord] - JUMPMARKER;
+ 
+       if(neword <= ord) songend = 1;
+@@ -598,12 +602,13 @@ void CmodPlayer::dealloc_patterns()
+   unsigned long i;
+ 
+   // dealloc everything previously allocated
+-  if(npats && nrows && nchans) {
++  if(tracks) {   // libadplug patch 0005: also when a count is 0 (the empty pointer arrays were leaked)
+     for(i=0;i<npats*nchans;i++) delete [] tracks[i];
+     delete [] tracks;
+     for(i=0;i<npats;i++) delete [] trackord[i];
+     delete [] trackord;
+     delete [] channel;
++    tracks = 0; trackord = 0; channel = 0;
+   }
+ }
+ 
+@@ -612,6 +617,8 @@ bool CmodPlayer::realloc_instruments(unsigned long len)
+   // dealloc previous instance, if any
+   if(inst) delete [] inst;
+ 
++  if(!len) len = 1;   // libadplug patch 0006: channels start on instrument 0
++  ninst = len;
+   inst = new Instrument[len];
+   memset(inst,0,sizeof(Instrument)*len);	// reset instruments
+   return true;
+diff --git a/components/libadplug/adplug/protrack.h b/components/libadplug/adplug/protrack.h
+index c399c6f..7b873c8 100644
+--- a/components/libadplug/adplug/protrack.h
++++ b/components/libadplug/adplug/protrack.h
+@@ -96,6 +96,7 @@ public:
+   unsigned char speed, del, songend, regbd;
+   unsigned short rows, notetable[12];
+   unsigned long rw, ord, nrows, npats, nchans;
++  unsigned long ninst = 0;   // libadplug patch 0006: allocated instrument count (an instrument number past it is ignored)
+ 
+   void setvolume(unsigned char chan);
+   void setvolume_alt(unsigned char chan);
+diff --git a/components/libadplug/adplug/rad2.cpp b/components/libadplug/adplug/rad2.cpp
+index a087dc2..e17d867 100644
+--- a/components/libadplug/adplug/rad2.cpp
++++ b/components/libadplug/adplug/rad2.cpp
+@@ -282,7 +282,7 @@ static const char *RADValidate(const void *data, size_t data_size) {
+ 			s += namelen;
+ 
+ 			// Get algorithm
+-			if (s > e)
++			if (s >= e)   // libadplug patch 0004: s == e reads one past the buffer
+ 				return g_RADTruncated;
+ 			uint8_t alg = *s;
+ 
+@@ -327,6 +327,8 @@ static const char *RADValidate(const void *data, size_t data_size) {
+ 	if (order_size > 128)
+ 		return g_RADOrderListTooLarge;
+ 	s += order_size;
++	if (s > e)   // libadplug patch 0004: the order list itself ran past the buffer
++		return g_RADTruncated;
+ 
+ 	for (uint8_t i = 0; i < order_size; i++) {
+ 		uint8_t order = order_list[i];
+@@ -1052,6 +1054,7 @@ uint8_t *RADPlayer::GetTrack() {
+ 	// infinite loop
+ 	if (track_num & 0x80) {
+ 		Order = track_num & 0x7F;
++		if (Order >= OrderListSize) Order = 0;   // libadplug patch 0008: a jump marker past the order list
+ 		track_num = OrderList[Order] & 0x7F;
+ 	}
+ 
+@@ -1067,7 +1070,7 @@ uint8_t *RADPlayer::GetTrack() {
+ 	}
+ #endif
+ 
+-	return Tracks[track_num];
++	return track_num < kTracks ? Tracks[track_num] : 0;   // libadplug patch 0008
+ }
+ 
+ 
+diff --git a/components/libadplug/adplug/sixdepack.cpp b/components/libadplug/adplug/sixdepack.cpp
+index 4873aca..6ce5420 100644
+--- a/components/libadplug/adplug/sixdepack.cpp
++++ b/components/libadplug/adplug/sixdepack.cpp
+@@ -20,6 +20,7 @@
+  *
+  */
+ 
++#include <string.h>
+ #include "sixdepack.h"
+ 
+ unsigned short Sixdepak::bitvalue(unsigned short bit)
+@@ -135,7 +136,7 @@ unsigned short Sixdepak::inputcode(unsigned short bits)
+         if (!ibitcount) {
+             if (ibufcount == input_size)
+                 return 0;
+-            ibitbuffer = wdbuf[ibufcount];
++            memcpy(&ibitbuffer, (const unsigned char *)wdbuf + 2 * ibufcount, 2);   // libadplug patch 0004: src is a byte buffer, a short load can be misaligned
+             ibufcount++;
+             ibitcount = 15;
+         } else
+@@ -157,7 +158,7 @@ unsigned short Sixdepak::uncompress()
+         if (!ibitcount) {
+             if (ibufcount == input_size)
+                 return TERMINATE;
+-            ibitbuffer = wdbuf[ibufcount];
++            memcpy(&ibitbuffer, (const unsigned char *)wdbuf + 2 * ibufcount, 2);   // libadplug patch 0004: src is a byte buffer, a short load can be misaligned
+             ibufcount++;
+             ibitcount = 15;
+         } else
+diff --git a/components/libadplug/adplug/sng.cpp b/components/libadplug/adplug/sng.cpp
+index 62358bd..187c08e 100644
+--- a/components/libadplug/adplug/sng.cpp
++++ b/components/libadplug/adplug/sng.cpp
+@@ -43,6 +43,7 @@ bool CsngPlayer::load(const std::string &filename, const CFileProvider &fp)
+ 
+   // load section
+   header.length /= 2; header.start /= 2; header.loop /= 2;
++  if(!header.length || header.start >= header.length || header.loop >= header.length) { fp.close(f); return false; }   // libadplug patch 0007: start / loop outside the data
+   data = new Sdata [header.length];
+   for(i = 0; i < header.length; i++) {
+     data[i].val = f->readInt(1);
+@@ -61,7 +62,9 @@ bool CsngPlayer::update()
+     return !songend;
+   }
+ 
++  unsigned guard = 0;   // libadplug patch 0007: a loop with no zero register never ends
+   while(data[pos].reg) {
++    if(++guard > 2u * header.length + 2) { songend = true; pos = header.loop; break; }
+     opl->write(data[pos].reg, data[pos].val);
+     pos++;
+     if(pos >= header.length) {
+diff --git a/components/libadplug/adplug/sop.cpp b/components/libadplug/adplug/sop.cpp
+index 244be30..ac13bc8 100644
+--- a/components/libadplug/adplug/sop.cpp
++++ b/components/libadplug/adplug/sop.cpp
+@@ -184,7 +184,8 @@ bool CsopPlayer::load(const std::string &filename, const CFileProvider &fp)
+ 			fp.close(f);
+ 			return false;
+ 		}
+-		track[i].data = new uint8_t[track[i].size];
++		track[i].data = new uint8_t[(size_t)track[i].size + 4];   // libadplug patch 0007: 4 zero bytes, a delay / event cut off by the end of the track reads zeros
++		memset(track[i].data + track[i].size, 0, 4);
+ 		f->readString((char *)track[i].data, track[i].size);
+ 	}
+ 	// done
+@@ -561,6 +562,8 @@ void Cad262Driver::SetStereoPan_SOP(int chan, int value)
+ 
+ 	if (chan >= maxVoices)
+ 		return;
++	if (value < 0 || value > 2)   // libadplug patch 0007: PAN[3] indexed by a raw event byte
++		return;
+ 
+ 	Stereo[chan] = (unsigned char)(value = PAN[value]);
+ 
+diff --git a/components/libadplug/adplug/u6m.cpp b/components/libadplug/adplug/u6m.cpp
+index d6660d1..300d3b6 100644
+--- a/components/libadplug/adplug/u6m.cpp
++++ b/components/libadplug/adplug/u6m.cpp
+@@ -63,7 +63,7 @@ bool Cu6mPlayer::load(const std::string &filename, const CFileProvider &fp)
+ 
+   // load section
+   delete[] song_data; song_size = 0;
+-  song_data = new unsigned char[decompressed_filesize];
++  song_data = new unsigned char[decompressed_filesize]();   // libadplug patch 0005: zeroed, a short decompression left heap garbage in the song
+   unsigned char* compressed_song_data = new unsigned char[filesize-3];
+ 
+   f->seek(4);
+@@ -153,7 +153,10 @@ void Cu6mPlayer::rewind(int subsong)
+   song_pos = 0;
+   loop_position = 0;   // position of the loop point
+   read_delay = 0;      // delay (in timer ticks) before further song data is read
++  cmd_total = 0;       // libadplug patch 0006
++  while (!subsong_stack.empty()) subsong_stack.pop();   // libadplug patch 0006: a rewind starts with no pending subsong calls
+  
++  for (int i = 0; i < 9; i++) instrument_offsets[i] = song_size;   // libadplug patch 0007: was uninitialised
+   for (int i = 0; i < 9; i++)
+     {
+       // frequency
+@@ -408,7 +411,7 @@ void Cu6mPlayer::command_loop()
+   do
+     {
+       // extract low and high command nibbles
+-      if (++guard > 100000) { songend = true; break; }
++      if (++guard > 4096 || ++cmd_total > 4000000UL) { songend = true; break; }   // libadplug patch 0006: per-tick limit 100000 -> 4096 and a total limit
+       command_byte = read_song_byte();   // implicitly increments song_pos
+       if (command_byte < 0)              // handle invalid position
+         {
+@@ -591,7 +594,7 @@ void Cu6mPlayer::command_7(int channel)
+ {
+   unsigned char instrument_number = read_song_byte();
+ 
+-  if (channel < 9 && instrument_number < 9)
++  if (channel < 9 && instrument_number < 9 && instrument_offsets[instrument_number] <= song_size && song_size - instrument_offsets[instrument_number] >= 11)   // libadplug patch 0007: instrument never loaded / out of the data
+     {
+       size_t instrument_offset = instrument_offsets[instrument_number];
+       out_adlib_opcell(channel, false, 0x20, song_data[instrument_offset+0]);
+diff --git a/components/libadplug/adplug/u6m.h b/components/libadplug/adplug/u6m.h
+index f2b199b..951149e 100644
+--- a/components/libadplug/adplug/u6m.h
++++ b/components/libadplug/adplug/u6m.h
+@@ -108,6 +108,7 @@ class Cu6mPlayer: public CPlayer
+   size_t song_pos;            // current offset within the song
+   size_t loop_position;       // position of the loop point
+   int read_delay;             // delay (in timer ticks) before further song data is read
++  unsigned long cmd_total = 0; // libadplug patch 0006: commands run since rewind (a hostile song ran ~100k per tick, 120k ticks)
+   std::stack<subsong_info> subsong_stack;
+ 
+   size_t instrument_offsets[9]; // offsets of the adlib instrument data
+diff --git a/components/libadplug/adplug/xsm.cpp b/components/libadplug/adplug/xsm.cpp
+index 6e271b2..a284a25 100644
+--- a/components/libadplug/adplug/xsm.cpp
++++ b/components/libadplug/adplug/xsm.cpp
+@@ -51,7 +51,7 @@ bool CxsmPlayer::load(const std::string &filename, const CFileProvider &fp)
+ 
+   // check if header matches
+   f->readString(id, 6); songlen = f->readInt(2);
+-  if(strncmp(id, "ofTAZ!", 6) || songlen > 3200) { fp.close(f); return false; }
++  if(strncmp(id, "ofTAZ!", 6) || songlen > 3200 || !songlen) { fp.close(f); return false; }   // libadplug patch 0007: songlen 0 left music[] empty
+ 
+   // read and set instruments
+   for(i = 0; i < 9; i++) {

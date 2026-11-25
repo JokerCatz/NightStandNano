@@ -1,0 +1,71 @@
+# Same silicon settings as JukeDial's app/sdkconfig.defaults: 16 MB QIO flash, octal PSRAM 80 MHz, 320 MHz.
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=1024
+CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL=65536
+CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY=y
+CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_320=y
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+CONFIG_ESP_CONSOLE_UART_DEFAULT=y
+# UAC2 configuration descriptors are ~420 B; the 256 B default fails enumeration
+CONFIG_USB_HOST_CONTROL_TRANSFER_MAX_SIZE=2048
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+# Bluetooth: dual mode Bluedroid, A2DP source + BLE GATT server (same set as JukeDial, without LE Audio / Auracast)
+CONFIG_BT_ENABLED=y
+CONFIG_BT_BLUEDROID_ENABLED=y
+CONFIG_BT_CLASSIC_ENABLED=y
+CONFIG_BT_A2DP_ENABLE=y
+CONFIG_BT_SPP_ENABLED=n
+CONFIG_BT_SSP_ENABLED=y
+CONFIG_BT_BLE_ENABLED=y
+CONFIG_BTDM_CTRL_MODE_BTDM=y
+CONFIG_BTDM_CTRL_MODE_BR_EDR_ONLY=n
+CONFIG_BTDM_CTRL_MODE_BLE_ONLY=n
+CONFIG_BT_ALLOCATION_FROM_SPIRAM_FIRST=y
+CONFIG_BT_BLE_DYNAMIC_ENV_MEMORY=y
+# legacy (4.2) advertising + GATT is all the control service needs, and what Web Bluetooth hosts handle best
+CONFIG_BT_BLE_50_FEATURES_SUPPORTED=y
+CONFIG_BT_BLE_42_FEATURES_SUPPORTED=n
+# Auracast broadcast source (LE Audio, same set as JukeDial; no broadcast sink)
+CONFIG_BT_BLE_FEAT_ISO_EN=y
+CONFIG_BT_LE_ISO_SUPPORT=y
+CONFIG_BT_ISO_MAX_CHAN=2
+CONFIG_BT_BAP_BROADCAST_SOURCE=y
+CONFIG_BT_PBP=y
+CONFIG_BT_BAP_BROADCAST_SRC_STREAM_COUNT=2
+CONFIG_BT_BAP_BROADCAST_SRC_SUBGROUP_COUNT=1
+# https radio: mbedTLS buffers in PSRAM (internal RAM is tight), certificate bundle for the stations' CAs (as JukeDial)
+CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC=y
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
+# A2DP with external codecs (esp_audio_codec): SBC + AAC both ways; the internal codec is going away
+CONFIG_BT_A2DP_USE_EXTERNAL_CODEC=y
+CONFIG_BT_A2DP_CODEC_AAC_ENABLED=y
+CONFIG_ESP_AUDIO_CODEC_S31_USE_ASM=y
+# patched Bluedroid: LDAC, aptX HD, aptX, AAC, SBC endpoints
+CONFIG_BT_A2DP_SEP_NUM_MAX=5
+CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y
+# LE Audio (ISO) wants a 1 ms tick (IDF refuses to build it otherwise)
+CONFIG_FREERTOS_HZ=1000
+# Internal RAM (the scarce resource, and Auracast needs ~28 KB of it): the same Wi-Fi trims JukeDial measured and runs
+# static TX buffers 16 -> 6: +17 KB; Wi-Fi hot paths from flash: +15.7 KB, throughput unchanged there
+CONFIG_ESP_WIFI_STATIC_TX_BUFFER_NUM=6
+# CONFIG_ESP_WIFI_IRAM_OPT is not set
+# CONFIG_ESP_WIFI_EXTRA_IRAM_OPT is not set
+# CONFIG_ESP_WIFI_RX_IRAM_OPT is not set
+# CONFIG_ESP_WIFI_SLP_IRAM_OPT is not set
+# network radio: far servers need a real TCP window (JukeDial's values)
+CONFIG_LWIP_TCP_WND_DEFAULT=32768
+CONFIG_LWIP_TCP_RECVMBOX_SIZE=32
+CONFIG_LWIP_TCPIP_RECVMBOX_SIZE=64
+CONFIG_LWIP_TCP_OOSEQ_MAX_PBUFS=0
+# Reproducible image: no build date / time in app_desc, no absolute paths in debug info (the macro paths are mapped in CMakeLists.txt).
+# Two builds of the same sources give the same .bin when the version string is the same (idf.py -DPROJECT_VER=... pins it; by default it is `git describe`).
+CONFIG_APP_REPRODUCIBLE_BUILD=y
+# The SD-over-SPI mode (hw sd spi) pulls in the SPI master driver: keep its interrupt handler in flash, not in the scarce internal RAM (about 6 KB)
+CONFIG_SPI_MASTER_ISR_IN_IRAM=n

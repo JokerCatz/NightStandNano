@@ -1,0 +1,714 @@
+0002-prowizard-output-in-memory
+ProWizard rebuilds the ProTracker module in a growing memory buffer (PW_MEM, 5 MiB cap) instead of a temp file
+
+--- a/src/loaders/pw_load.c
++++ b/src/loaders/pw_load.c
+@@ -27,7 +27,6 @@
+ #ifndef LIBXMP_NO_PROWIZARD
+ 
+ #include "prowizard/prowiz.h"
+-#include "../tempfile.h"
+ 
+ static int pw_test(HIO_HANDLE *, char *, const int);
+ static int pw_load(struct module_data *, HIO_HANDLE *, const int);
+@@ -60,26 +59,22 @@
+ 	struct mod_header mh;
+ 	uint8 mod_event[4];
+ 	HIO_HANDLE *f;
+-	FILE *temp;
++	PW_MEM temp;
+ 	const char *name;
+-	char *temp_name;
+ 	int i, j;
+ 
+ 	/* Prowizard depacking */
+ 
+-	if ((temp = make_temp_file(&temp_name)) == NULL) {
+-		goto err;
+-	}
++	memset(&temp, 0, sizeof(temp));	/* JukeDial patch 0002: the rebuilt module is kept in memory */
+ 
+-	if (pw_wizardry(h, temp, &name) < 0) {
+-		fclose(temp);
++	if (pw_wizardry(h, &temp, &name) < 0) {
+ 		goto err2;
+ 	}
+ 
+ 	/* Module loading */
+ 
+ 	D_(D_INFO "loading generated module");
+-	if ((f = hio_open_file2(temp)) == NULL) {
++	if (temp.len == 0 || (f = hio_open_const_mem(temp.buf, (long)temp.len)) == NULL) {
+ 		goto err2;
+ 	}
+ 
+@@ -186,14 +181,13 @@
+ 	}
+ 
+ 	hio_close(f);
+-	unlink_temp_file(temp_name);
++	free(temp.buf);
+ 	return 0;
+ 
+     err3:
+ 	hio_close(f);
+     err2:
+-	unlink_temp_file(temp_name);
+-    err:
++	free(temp.buf);
+ 	return -1;
+ }
+ 
+--- a/src/loaders/prowizard/prowiz.h
++++ b/src/loaders/prowizard/prowiz.h
+@@ -5,6 +5,26 @@
+ #include "../../format.h"
+ #include "../../hio.h"
+ 
++/* JukeDial patch 0002: ProWizard writes the rebuilt ProTracker module into a growing memory buffer, not into a temp file.
++ * Only the calls the depackers use on the output are redirected (fwrite, fflush, write8/16/32); they cannot reach a real FILE. */
++typedef struct pw_mem {
++	uint8 *buf;
++	size_t len, cap;
++	int err;
++} PW_MEM;
++
++#define PW_MEM_MAX	(5u << 20)	/* a ProTracker module is at most about 4.2 MB */
++
++size_t pw_mem_write(const void *, size_t, size_t, PW_MEM *);
++void pw_mem_put(PW_MEM *, unsigned long, int);
++#define fwrite(p, s, n, o)	pw_mem_write(p, s, n, o)
++#define fflush(o)		(0)
++#define write8(o, b)		pw_mem_put(o, (b) & 0xff, 1)
++#define write16b(o, v)		pw_mem_put(o, (v) & 0xffff, 2)
++#define write32b(o, v)		pw_mem_put(o, (v) & 0xffffffffUL, 4)
++#define write16l(o, v)		pw_mem_put(o, (v) & 0xffff, -2)
++#define write32l(o, v)		pw_mem_put(o, (v) & 0xffffffffUL, -4)
++
+ #define MIN_FILE_LENGHT 2048
+ 
+ #define PW_TEST_CHUNK   0x10000
+@@ -28,12 +48,12 @@
+ struct pw_format {
+ 	const char *name;
+ 	int (*test)(const uint8 *, char *, int);
+-	int (*depack)(HIO_HANDLE *, FILE *);
++	int (*depack)(HIO_HANDLE *, PW_MEM *);
+ };
+ 
+-int pw_wizardry(HIO_HANDLE *, FILE *, const char **);
+-int pw_move_data(FILE *, HIO_HANDLE *, int);
+-int pw_write_zero(FILE *, int);
++int pw_wizardry(HIO_HANDLE *, PW_MEM *, const char **);
++int pw_move_data(PW_MEM *, HIO_HANDLE *, int);
++int pw_write_zero(PW_MEM *, int);
+ /* int pw_enable(char *, int); */
+ const struct pw_format *pw_check(HIO_HANDLE *, struct xmp_test_info *);
+ void pw_read_title(const unsigned char *, char *, int);
+--- a/src/loaders/prowizard/prowiz.c
++++ b/src/loaders/prowizard/prowiz.c
+@@ -81,7 +81,55 @@
+ 	NULL
+ };
+ 
+-int pw_move_data(FILE *out, HIO_HANDLE *in, int len)
++size_t pw_mem_write(const void *p, size_t size, size_t nmemb, PW_MEM *o)
++{
++	size_t n, need;
++
++	if (o->err || size == 0 || nmemb == 0) {
++		return o->err ? 0 : nmemb;
++	}
++	if (nmemb > PW_MEM_MAX / size) {
++		o->err = 1;
++		return 0;
++	}
++	n = size * nmemb;
++	need = o->len + n;
++	if (need > PW_MEM_MAX) {
++		o->err = 1;
++		return 0;
++	}
++	if (need > o->cap) {
++		size_t cap = o->cap ? o->cap : 65536;
++		uint8 *nb;
++		while (cap < need) {
++			cap *= 2;
++		}
++		nb = (uint8 *)realloc(o->buf, cap);
++		if (nb == NULL) {
++			o->err = 1;
++			return 0;
++		}
++		o->buf = nb;
++		o->cap = cap;
++	}
++	memcpy(o->buf + o->len, p, n);
++	o->len += n;
++	return nmemb;
++}
++
++/* n bytes of v, big-endian (n > 0) or little-endian (n < 0) */
++void pw_mem_put(PW_MEM *o, unsigned long v, int n)
++{
++	uint8 b[4];
++	int i, k = n < 0 ? -n : n;
++
++	for (i = 0; i < k; i++) {
++		b[i] = (uint8)(v >> (8 * (n < 0 ? i : k - 1 - i)));
++	}
++	pw_mem_write(b, 1, (size_t)k, o);
++}
++
++int pw_move_data(PW_MEM *out, HIO_HANDLE *in, int len)
+ {
+ 	uint8 buf[1024];
+ 	int l;
+@@ -95,7 +143,7 @@
+ 	return 0;
+ }
+ 
+-int pw_write_zero(FILE *out, int len)
++int pw_write_zero(PW_MEM *out, int len)
+ {
+ 	uint8 buf[1024];
+ 	int l;
+@@ -110,7 +158,7 @@
+ 	return 0;
+ }
+ 
+-int pw_wizardry(HIO_HANDLE *file_in, FILE *file_out, const char **name)
++int pw_wizardry(HIO_HANDLE *file_in, PW_MEM *file_out, const char **name)
+ {
+ 	const struct pw_format *format;
+ 
+@@ -129,7 +177,9 @@
+ 		return -1;
+ 	}
+ 
+-	fflush(file_out);
++	if (file_out->err) {
++		return -1;
++	}
+ 
+ 	if (name != NULL) {
+ 		*name = format->name;
+--- a/src/loaders/prowizard/fuzzac.c
++++ b/src/loaders/prowizard/fuzzac.c
+@@ -39,7 +39,7 @@
+ #include "prowiz.h"
+ 
+ 
+-static int depack_fuzz(HIO_HANDLE *in, FILE *out)
++static int depack_fuzz(HIO_HANDLE *in, PW_MEM *out)
+ {
+ 	uint8 c1;
+ 	uint8 data[1024];
+--- a/src/loaders/prowizard/eureka.c
++++ b/src/loaders/prowizard/eureka.c
+@@ -31,7 +31,7 @@
+ #include "prowiz.h"
+ 
+ 
+-static int depack_eu(HIO_HANDLE *in, FILE *out)
++static int depack_eu(HIO_HANDLE *in, PW_MEM *out)
+ {
+ 	uint8 tmp[1080];
+ 	uint8 c1;
+--- a/src/loaders/prowizard/theplayer.c
++++ b/src/loaders/prowizard/theplayer.c
+@@ -209,7 +209,7 @@
+ }
+ 
+ 
+-static int theplayer_depack(HIO_HANDLE *in, FILE *out, int version)
++static int theplayer_depack(HIO_HANDLE *in, PW_MEM *out, int version)
+ {
+     uint8 c1, c3;
+     signed char *smp_buffer;
+@@ -511,7 +511,7 @@
+ }
+ 
+ 
+-static int depack_p50a(HIO_HANDLE *in, FILE *out)
++static int depack_p50a(HIO_HANDLE *in, PW_MEM *out)
+ {
+ 	return theplayer_depack(in, out, 0x50);
+ }
+@@ -528,7 +528,7 @@
+ };
+ 
+ 
+-static int depack_p60a(HIO_HANDLE *in, FILE *out)
++static int depack_p60a(HIO_HANDLE *in, PW_MEM *out)
+ {
+ 	return theplayer_depack(in, out, 0x60);
+ }
+--- a/src/loaders/prowizard/unic.c
++++ b/src/loaders/prowizard/unic.c
+@@ -36,7 +36,7 @@
+ #define MAGIC_0000	MAGIC4(0x0,0x0,0x0,0x0)
+ 
+ 
+-static int depack_unic(HIO_HANDLE *in, FILE *out)
++static int depack_unic(HIO_HANDLE *in, PW_MEM *out)
+ {
+ 	uint8 c1, c2, c3, c4;
+ 	uint8 npat;
+--- a/src/loaders/prowizard/zen.c
++++ b/src/loaders/prowizard/zen.c
+@@ -31,7 +31,7 @@
+ #include "prowiz.h"
+ 
+ 
+-static int depack_zen(HIO_HANDLE *in, FILE *out)
++static int depack_zen(HIO_HANDLE *in, PW_MEM *out)
+ {
+ 	uint8 c1, c2, c3, c4;
+ 	uint8 finetune, vol;
+--- a/src/loaders/prowizard/di.c
++++ b/src/loaders/prowizard/di.c
+@@ -31,7 +31,7 @@
+ #include "prowiz.h"
+ 
+ 
+-static int write_event(uint8 c1, uint8 c2, uint8 fxp, FILE *out)
++static int write_event(uint8 c1, uint8 c2, uint8 fxp, PW_MEM *out)
+ {
+ 	uint8 note, ins, fxt;
+ 	uint8 p[4];
+@@ -56,7 +56,7 @@
+ 	return 0;
+ }
+ 
+-static int depack_di(HIO_HANDLE *in, FILE *out)
++static int depack_di(HIO_HANDLE *in, PW_MEM *out)
+ {
+ 	uint8 c1, c2, c3;
+ 	uint8 nins, npat, max;
+--- a/src/loaders/prowizard/tp1.c
++++ b/src/loaders/prowizard/tp1.c
+@@ -30,7 +30,7 @@
+ 
+ #include "prowiz.h"
+ 
+-static int depack_tp1(HIO_HANDLE *in, FILE *out)
++static int depack_tp1(HIO_HANDLE *in, PW_MEM *out)
+ {
+ 	uint8 c1, c2, c3, c4;
+ 	uint8 pnum[128];
+--- a/src/loaders/prowizard/noiserun.c
++++ b/src/loaders/prowizard/noiserun.c
+@@ -37,7 +37,7 @@
+ };
+ 
+ 
+-static int depack_nru(HIO_HANDLE *in, FILE *out)
++static int depack_nru(HIO_HANDLE *in, PW_MEM *out)
+ {
+ 	uint8 tmp[1025];
+ 	uint8 ptable[128];
+--- a/src/loaders/prowizard/pp21.c
++++ b/src/loaders/prowizard/pp21.c
+@@ -39,7 +39,7 @@
+ #include "prowiz.h"
+ 
+ 
+-static int depack_pp21_pp30(HIO_HANDLE *in, FILE *out, int is_30)
++static int depack_pp21_pp30(HIO_HANDLE *in, PW_MEM *out, int is_30)
+ {
+ 	uint8 ptable[128];
+ 	int max = 0;
+@@ -141,12 +141,12 @@
+ 	return 0;
+ }
+ 
+-static int depack_pp21(HIO_HANDLE *in, FILE *out)
++static int depack_pp21(HIO_HANDLE *in, PW_MEM *out)
+ {
+ 	return depack_pp21_pp30(in, out, 0);
+ }
+ 
+-static int depack_pp30(HIO_HANDLE *in, FILE *out)
++static int depack_pp30(HIO_HANDLE *in, PW_MEM *out)
+ {
+ 	return depack_pp21_pp30(in, out, 1);
+ }
+--- a/src/loaders/prowizard/wn.c
++++ b/src/loaders/prowizard/wn.c
+@@ -31,7 +31,7 @@
+ #include "prowiz.h"
+ 
+ 
+-static int depack_wn(HIO_HANDLE *in, FILE * out)
++static int depack_wn(HIO_HANDLE *in, PW_MEM *out)
+ {
+ 	uint8 c1, c2, c3, c4;
+ 	uint8 npat, max;
+--- a/src/loaders/prowizard/pm01.c
++++ b/src/loaders/prowizard/pm01.c
+@@ -30,7 +30,7 @@
+ #include <math.h>
+ #include "prowiz.h"
+ 
+-static int depack_pm01(HIO_HANDLE *in, FILE *out)
++static int depack_pm01(HIO_HANDLE *in, PW_MEM *out)
+ {
+ 	uint8 ptable[128];
+ 	uint8 len;
+--- a/src/loaders/prowizard/np3.c
++++ b/src/loaders/prowizard/np3.c
+@@ -34,7 +34,7 @@
+ #include "prowiz.h"
+ 
+ 
+-static int depack_np3(HIO_HANDLE *in, FILE *out)
++static int depack_np3(HIO_HANDLE *in, PW_MEM *out)
+ {
+ 	uint8 tmp[1024];
+ 	uint8 c1, c2, c3, c4;
+--- a/src/loaders/prowizard/np1.c
++++ b/src/loaders/prowizard/np1.c
+@@ -31,7 +31,7 @@
+ #include "prowiz.h"
+ 
+ 
+-static int depack_np1(HIO_HANDLE *in, FILE *out)
++static int depack_np1(HIO_HANDLE *in, PW_MEM *out)
+ {
+ 	uint8 tmp[1024];
+ 	uint8 c1, c2, c3, c4;
+--- a/src/loaders/prowizard/fc-m.c
++++ b/src/loaders/prowizard/fc-m.c
+@@ -31,7 +31,7 @@
+ #include "prowiz.h"
+ 
+ 
+-static int depack_fcm(HIO_HANDLE *in, FILE *out)
++static int depack_fcm(HIO_HANDLE *in, PW_MEM *out)
+ {
+ 	uint8 c1;
+ 	uint8 ptable[128];
+--- a/src/loaders/prowizard/ksm.c
++++ b/src/loaders/prowizard/ksm.c
+@@ -30,7 +30,7 @@
+ #include "prowiz.h"
+ 
+ 
+-static int depack_ksm(HIO_HANDLE *in, FILE *out)
++static int depack_ksm(HIO_HANDLE *in, PW_MEM *out)
+ {
+ 	uint8 tmp[1024];
+ 	uint8 c1, c5;
+--- a/src/loaders/prowizard/ac1d.c
++++ b/src/loaders/prowizard/ac1d.c
+@@ -34,7 +34,7 @@
+ 
+ #define NO_NOTE 0xff
+ 
+-static int depack_ac1d(HIO_HANDLE *in, FILE *out)
++static int depack_ac1d(HIO_HANDLE *in, PW_MEM *out)
+ {
+ 	uint8 c1, c2, c3, c4;
+ 	uint8 npos;
+--- a/src/loaders/prowizard/starpack.c
++++ b/src/loaders/prowizard/starpack.c
+@@ -31,7 +31,7 @@
+ #include "prowiz.h"
+ 
+ 
+-static int depack_starpack(HIO_HANDLE *in, FILE *out)
++static int depack_starpack(HIO_HANDLE *in, PW_MEM *out)
+ {
+ 	uint8 pnum[128];
+ 	uint8 pnum_tmp[128];
+--- a/src/loaders/prowizard/mp.c
++++ b/src/loaders/prowizard/mp.c
+@@ -33,7 +33,7 @@
+ #define MAGIC_TRK1	MAGIC4('T','R','K','1')
+ 
+ 
+-static int depack_mp(HIO_HANDLE *in, FILE *out)
++static int depack_mp(HIO_HANDLE *in, PW_MEM *out)
+ {
+ 	uint8 c1;
+ 	uint8 ptable[128];
+--- a/src/loaders/prowizard/novotrade.c
++++ b/src/loaders/prowizard/novotrade.c
+@@ -29,7 +29,7 @@
+ #include "prowiz.h"
+ 
+ 
+-static int depack_ntp(HIO_HANDLE *in, FILE *out)
++static int depack_ntp(HIO_HANDLE *in, PW_MEM *out)
+ {
+ 	uint8 buf[1024];
+ 	int i, j;
+--- a/src/loaders/prowizard/tp3.c
++++ b/src/loaders/prowizard/tp3.c
+@@ -31,7 +31,7 @@
+ #include "prowiz.h"
+ 
+ 
+-static int depack_tp23(HIO_HANDLE *in, FILE *out, int ver)
++static int depack_tp23(HIO_HANDLE *in, PW_MEM *out, int ver)
+ {
+ 	uint8 c1, c2, c3, c4;
+ 	uint8 pnum[128];
+@@ -238,12 +238,12 @@
+ 	return 0;
+ }
+ 
+-static int depack_tp3(HIO_HANDLE *in, FILE *out)
++static int depack_tp3(HIO_HANDLE *in, PW_MEM *out)
+ {
+ 	return depack_tp23(in, out, 3);
+ }
+ 
+-static int depack_tp2(HIO_HANDLE *in, FILE *out)
++static int depack_tp2(HIO_HANDLE *in, PW_MEM *out)
+ {
+ 	return depack_tp23(in, out, 2);
+ }
+--- a/src/loaders/prowizard/np2.c
++++ b/src/loaders/prowizard/np2.c
+@@ -31,7 +31,7 @@
+ #include "prowiz.h"
+ 
+ 
+-static int depack_np2(HIO_HANDLE *in, FILE *out)
++static int depack_np2(HIO_HANDLE *in, PW_MEM *out)
+ {
+ 	uint8 tmp[1024];
+ 	uint8 c1, c2, c3, c4;
+--- a/src/loaders/prowizard/pm20.c
++++ b/src/loaders/prowizard/pm20.c
+@@ -36,7 +36,7 @@
+ #define ADDRESS_REF_TABLE   5710
+ #define PATTERN_DATA        5714
+ 
+-void Depack_PM20 (FILE * in, FILE * out)
++void Depack_PM20 (PW_MEM *in, PW_MEM *out)
+ {
+ 	uint8 c1 = 0x00, c2 = 0x00, c3 = 0x00, c4 = 0x00;
+ 	short pat_max = 0;
+--- a/src/loaders/prowizard/p40.c
++++ b/src/loaders/prowizard/p40.c
+@@ -78,7 +78,7 @@
+ 	uint8 vol;
+ };
+ 
+-static int depack_p4x(HIO_HANDLE *in, FILE *out)
++static int depack_p4x(HIO_HANDLE *in, PW_MEM *out)
+ {
+ 	uint8 c1, c2, c3, c4, c5;
+ 	uint8 tmp[1024];
+--- a/src/loaders/prowizard/pm10c.c
++++ b/src/loaders/prowizard/pm10c.c
+@@ -31,7 +31,7 @@
+ #include "prowiz.h"
+ 
+ 
+-static int depack_p10c(HIO_HANDLE *in, FILE *out)
++static int depack_p10c(HIO_HANDLE *in, PW_MEM *out)
+ {
+ 	uint8 c1, c2;
+ 	int pat_max;
+--- a/src/loaders/prowizard/pha.c
++++ b/src/loaders/prowizard/pha.c
+@@ -32,7 +32,7 @@
+ #include "prowiz.h"
+ 
+ 
+-static int depack_pha(HIO_HANDLE *in, FILE *out)
++static int depack_pha(HIO_HANDLE *in, PW_MEM *out)
+ {
+ 	uint8 c1, c2;
+ 	uint8 pnum[128];
+--- a/src/loaders/prowizard/prun1.c
++++ b/src/loaders/prowizard/prun1.c
+@@ -31,7 +31,7 @@
+ #include "prowiz.h"
+ 
+ 
+-static int depack_pru1 (HIO_HANDLE *in, FILE *out)
++static int depack_pru1 (HIO_HANDLE *in, PW_MEM *out)
+ {
+ 	uint8 header[2048];
+ 	uint8 c1, c2, c3, c4;
+--- a/src/loaders/prowizard/hrt.c
++++ b/src/loaders/prowizard/hrt.c
+@@ -29,7 +29,7 @@
+ #include "prowiz.h"
+ 
+ 
+-static int depack_hrt(HIO_HANDLE *in, FILE *out)
++static int depack_hrt(HIO_HANDLE *in, PW_MEM *out)
+ {
+ 	uint8 buf[1024];
+ 	uint8 c1, c2, c3, c4;
+--- a/src/loaders/prowizard/skyt.c
++++ b/src/loaders/prowizard/skyt.c
+@@ -29,7 +29,7 @@
+ #include "prowiz.h"
+ 
+ 
+-static int depack_skyt(HIO_HANDLE *in, FILE *out)
++static int depack_skyt(HIO_HANDLE *in, PW_MEM *out)
+ {
+ 	uint8 c1, c2, c3, c4;
+ 	uint8 ptable[128];
+--- a/src/loaders/prowizard/heatseek.c
++++ b/src/loaders/prowizard/heatseek.c
+@@ -33,7 +33,7 @@
+ #include "prowiz.h"
+ 
+ 
+-static int depack_crb(HIO_HANDLE *in, FILE *out)
++static int depack_crb(HIO_HANDLE *in, PW_MEM *out)
+ {
+ 	uint8 c1;
+ 	uint8 ptable[128];
+--- a/src/loaders/prowizard/tdd.c
++++ b/src/loaders/prowizard/tdd.c
+@@ -31,7 +31,7 @@
+ #include "prowiz.h"
+ 
+ 
+-static int depack_tdd(HIO_HANDLE *in, FILE *out)
++static int depack_tdd(HIO_HANDLE *in, PW_MEM *out)
+ {
+ 	uint8 tmp[1024];
+ 	uint8 pat[1024];
+--- a/src/loaders/prowizard/pm.c
++++ b/src/loaders/prowizard/pm.c
+@@ -29,7 +29,7 @@
+ 
+ #include "prowiz.h"
+ 
+-void Depack_PM (FILE * in, FILE * out)
++void Depack_PM (PW_MEM *in, PW_MEM *out)
+ {
+ 	uint8 Header[2048];
+ 	signed char *tmp;
+--- a/src/loaders/prowizard/prun2.c
++++ b/src/loaders/prowizard/prun2.c
+@@ -31,7 +31,7 @@
+ #include "prowiz.h"
+ 
+ 
+-static int depack_pru2(HIO_HANDLE *in, FILE *out)
++static int depack_pru2(HIO_HANDLE *in, PW_MEM *out)
+ {
+ 	uint8 header[2048];
+ 	uint8 npat;
+--- a/src/loaders/prowizard/titanics.c
++++ b/src/loaders/prowizard/titanics.c
+@@ -40,7 +40,7 @@
+ }
+ 
+ 
+-static int depack_titanics(HIO_HANDLE *in, FILE *out)
++static int depack_titanics(HIO_HANDLE *in, PW_MEM *out)
+ {
+ 	uint8 buf[1024];
+ 	long pat_addr[128];
+--- a/src/loaders/prowizard/pp30.c
++++ b/src/loaders/prowizard/pp30.c
+@@ -30,7 +30,7 @@
+ 
+ #include "prowiz.h"
+ 
+-void Depack_PP30 (FILE * in, FILE * out)
++void Depack_PP30 (PW_MEM *in, PW_MEM *out)
+ {
+ 	uint8 c1 = 0x00, c2 = 0x00, c3 = 0x00, c4 = 0x00;
+ 	uint8 ptable[128];
+--- a/src/loaders/prowizard/fuchs.c
++++ b/src/loaders/prowizard/fuchs.c
+@@ -31,7 +31,7 @@
+ #include "prowiz.h"
+ 
+ 
+-static int depack_fuchs(HIO_HANDLE *in, FILE *out)
++static int depack_fuchs(HIO_HANDLE *in, PW_MEM *out)
+ {
+ 	uint8 *tmp;
+ 	uint8 max_pat;
+--- a/src/loaders/prowizard/xann.c
++++ b/src/loaders/prowizard/xann.c
+@@ -34,7 +34,7 @@
+ #define PAT_DATA_ADDRESS 0x43C
+ 
+ 
+-static int depack_xann(HIO_HANDLE *in, FILE *out)
++static int depack_xann(HIO_HANDLE *in, PW_MEM *out)
+ {
+ 	uint8 c1, c2, c5;
+ 	uint8 ptable[128];
+--- a/src/loaders/prowizard/gmc.c
++++ b/src/loaders/prowizard/gmc.c
+@@ -31,7 +31,7 @@
+ #include "prowiz.h"
+ 
+ 
+-static int depack_GMC(HIO_HANDLE *in, FILE *out)
++static int depack_GMC(HIO_HANDLE *in, PW_MEM *out)
+ {
+ 	uint8 tmp[1024];
+ 	uint8 ptable[128];
+--- a/src/loaders/prowizard/pm40.c
++++ b/src/loaders/prowizard/pm40.c
+@@ -35,7 +35,7 @@
+ #define ADDRESS_REF_TABLE   516
+ #define PATTERN_DATA        520
+ 
+-void Depack_PM40 (FILE * in, FILE * out)
++void Depack_PM40 (PW_MEM *in, PW_MEM *out)
+ {
+ 	uint8 c1 = 0x00, c2 = 0x00, c3 = 0x00, c4 = 0x00;
+ 	uint8 PatPos = 0x00;
+--- a/src/loaders/prowizard/unic2.c
++++ b/src/loaders/prowizard/unic2.c
+@@ -31,7 +31,7 @@
+ #include "prowiz.h"
+ 
+ 
+-static int depack_unic2(HIO_HANDLE *in, FILE *out)
++static int depack_unic2(HIO_HANDLE *in, PW_MEM *out)
+ {
+ 	uint8 c1, c2, c3, c4;
+ 	uint8 npat, maxpat;
+--- a/src/loaders/prowizard/pp10.c
++++ b/src/loaders/prowizard/pp10.c
+@@ -30,7 +30,7 @@
+ 
+ #include "prowiz.h"
+ 
+-static int depack_pp10(HIO_HANDLE *in, FILE *out)
++static int depack_pp10(HIO_HANDLE *in, PW_MEM *out)
+ {
+ 	uint8 c1;
+ 	uint8 trk_num[4][128];
+--- a/src/loaders/prowizard/p61a.c
++++ b/src/loaders/prowizard/p61a.c
+@@ -38,7 +38,7 @@
+ #include "prowiz.h"
+ 
+ 
+-static int depack_p61a(HIO_HANDLE *in, FILE *out)
++static int depack_p61a(HIO_HANDLE *in, PW_MEM *out)
+ {
+     uint8 c1, c2, c3, c4, c5, c6;
+     long max_row;
+--- a/src/loaders/prowizard/pm18a.c
++++ b/src/loaders/prowizard/pm18a.c
+@@ -33,7 +33,7 @@
+ #include "prowiz.h"
+ 
+ 
+-static int depack_p18a(HIO_HANDLE *in, FILE *out)
++static int depack_p18a(HIO_HANDLE *in, PW_MEM *out)
+ {
+ 	short pat_max;
+ 	int refmax;

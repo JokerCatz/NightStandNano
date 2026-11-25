@@ -1,0 +1,15 @@
+0003-no-paula-mixer
+LIBXMP_NO_PAULA: the Amiga Paula (BLEP) mixer is not built
+
+--- a/src/common.h
++++ b/src/common.h
+@@ -127,7 +127,8 @@
+ #pragma warning(disable:4267) /* conversion from 'size_t' to 'type', possible loss of data */
+ #endif
+ 
+-#ifndef LIBXMP_CORE_PLAYER
++/* JukeDial patch 0003: LIBXMP_NO_PAULA drops the Amiga Paula (BLEP) mixer; MOD/XM/S3M/IT sound as they did on libxmp-lite */
++#if !defined(LIBXMP_CORE_PLAYER) && !defined(LIBXMP_NO_PAULA)
+ #define LIBXMP_PAULA_SIMULATOR
+ #endif
+ 

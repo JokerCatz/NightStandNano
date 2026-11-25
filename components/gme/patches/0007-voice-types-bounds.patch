@@ -1,0 +1,30 @@
+diff --git a/gme/Nsf_Emu.cpp b/gme/Nsf_Emu.cpp
+index 796de61..b2322ae 100644
+--- a/gme/Nsf_Emu.cpp
++++ b/gme/Nsf_Emu.cpp
+@@ -209,7 +209,9 @@ blargg_err_t Nsf_Emu::init_sound()
+ 		count += Nes_Apu::osc_count;
+ 	}
+ 
+-	static int const types [] = {
++	// JC 0006: sized for the most voices any chip mix gives (5 + 3 + 3 + 8 + 1 + 3 + 6 = 29), zero-filled past the
++	// 16 named ones; Classic_Emu::mute_voices_ reads voice_types[i] for every voice (ASan, CHIP0).
++	static int const types [32] = {
+ 		wave_type  | 1, wave_type  | 2, wave_type | 0,
+ 		noise_type | 0, mixed_type | 1,
+ 		wave_type  | 3, wave_type  | 4, wave_type | 5,
+diff --git a/gme/Vgm_Emu.cpp b/gme/Vgm_Emu.cpp
+index 09413a5..8f51ac6 100644
+--- a/gme/Vgm_Emu.cpp
++++ b/gme/Vgm_Emu.cpp
+@@ -35,7 +35,9 @@ Vgm_Emu::Vgm_Emu()
+ 	psg_rate   = 0;
+ 	set_type( gme_vgm_type );
+ 
+-	static int const types [8] = {
++	// JC 0006: Classic_Emu::mute_voices_ reads voice_types[i] for every voice (up to 10 with FM); the array was 8 long,
++	// 4 initialised, so it read past the end (found by ASan, CHIP0). 16 zero-filled entries cover it.
++	static int const types [16] = {
+ 		wave_type | 1, wave_type | 0, wave_type | 2, noise_type | 0
+ 	};
+ 	set_voice_types( types );

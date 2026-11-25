@@ -1,0 +1,19 @@
+cRSID 1.58 -- cRSID lightweight (integer-only) RealSID library by Hermit (Mihaly Horvath), 2026
+https://csdb.dk/release/?id=261057
+The author's licence statement, quoted exactly from the release archive cRSID-1.58-with-source-code.tar.gz
+(sha256 98bc2da927b65ab8781b46dc5341b1113967b0b61aa05406877c0e5dcffa8b9d):
+
+1. cRSID-1.58/README.txt, last paragraph:
+   "License is still WTF: Do what the frick you want with this code, but
+                          it would be nice mentioning me as the original author."
+
+2. cRSID-1.58/libcRSID/README.txt, last paragraph:
+   "License is still WTF, you can use the code in any way you like, but I'd like to be mentioned as the original author."
+
+3. cRSID-1.58/libcRSID/libcRSID.c, line 2:
+   "// License: WTF - do what the frick you want with this code, but please mention me as the original author"
+
+Our reading: an unrestricted permission to use, modify and redistribute; the credit is requested, not a condition. We give it:
+the app's licence / about text and the guide credit "C64 SID emulation: cRSID 1.58 by Hermit (Mihaly Horvath)".
+The informal wording is not a standard licence text; the author's written confirmation would be safer.
+Not vendored: host/md5.c (no licence statement), the SDL / GUI / command-line programs, echo2.prg and every .sid file of the archive.

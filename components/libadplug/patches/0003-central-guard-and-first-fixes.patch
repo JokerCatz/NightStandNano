@@ -1,0 +1,194 @@
+diff --git a/components/libadplug/adplug/a2m-v2.cpp b/components/libadplug/adplug/a2m-v2.cpp
+index 7c256bb..36740d6 100644
+--- a/components/libadplug/adplug/a2m-v2.cpp
++++ b/components/libadplug/adplug/a2m-v2.cpp
+@@ -33,6 +33,10 @@
+ #include "debug.h"
+ #include <climits>
+ #include <math.h>
++/* libadplug patch 0003: calloc / free go to the handle's allocation list (adplug_c.cpp), so a failed allocation can drop everything */
++extern "C" { void *adp_tcalloc(size_t, size_t); void adp_tfree(void *); }
++#define calloc adp_tcalloc
++#define free adp_tfree
+ 
+ static const uint8_t _panning[3] = { 0x30, 0x10, 0x20 };
+ static const uint8_t def_vibtrem_table[256] = {
+diff --git a/components/libadplug/adplug/bam.cpp b/components/libadplug/adplug/bam.cpp
+index b2946fc..0b4bf47 100644
+--- a/components/libadplug/adplug/bam.cpp
++++ b/components/libadplug/adplug/bam.cpp
+@@ -98,7 +98,9 @@ bool CbamPlayer::update()
+ 		songend = true;
+ 	}
+ 
++	int guard = 0;
+ 	while(pos < size && song[pos] < 128) {   // libadplug patch 0001: pos < size
++		if(++guard > 4096) { pos = 0; songend = true; return false; }   // libadplug patch 0003: a song with no wait command loops forever
+ 		cmd = song[pos] & 240;
+ 		c = song[pos] & 15;
+ 		switch(cmd) {
+@@ -186,7 +188,7 @@ bool CbamPlayer::update()
+ 			break;
+ 		}
+ 	}
+-	if(song[pos] >= 128) {		// wait
++	if(pos < size && song[pos] >= 128) {		// wait
+ 		del = song[pos] - 127;
+ 		pos++;
+ 	}
+diff --git a/components/libadplug/adplug/dmo.cpp b/components/libadplug/adplug/dmo.cpp
+index 44b3620..8160e7a 100644
+--- a/components/libadplug/adplug/dmo.cpp
++++ b/components/libadplug/adplug/dmo.cpp
+@@ -53,6 +53,7 @@ bool CdmoLoader::load(const std::string &filename, const CFileProvider &fp)
+   dmo_unpacker unpacker;
+   unsigned char chkhdr[16];
+ 
++  if (fp.filesize(f) < 32) { fp.close(f); return false; }   // libadplug patch 0003: the header reads below need the bytes
+   f->readString((char *)chkhdr, 16);
+ 
+   if (!unpacker.decrypt(chkhdr, 16))
+diff --git a/components/libadplug/adplug/mid.cpp b/components/libadplug/adplug/mid.cpp
+index 6bef04b..46e0e50 100644
+--- a/components/libadplug/adplug/mid.cpp
++++ b/components/libadplug/adplug/mid.cpp
+@@ -81,6 +81,7 @@
+ #include <math.h>
+ #include <string.h>
+ #include "mid.h"
++extern "C" { void *adp_tcalloc(size_t, size_t); void adp_tfree(void *); }
+ #include "mididata.h"
+ #include "load_helper.h"
+ 
+@@ -196,7 +197,7 @@ bool CmidPlayer::load_sierra_ins(const std::string &fname, const CFileProvider &
+     binistream *f;
+ 
+     fl = fname.length()+10;
+-    pfilename = (char *)malloc(fl);
++    pfilename = (char *)adp_tcalloc(1, fl);   /* libadplug patch 0003 */
+     strcpy(pfilename,fname.c_str());
+     j=0;
+     for(i=strlen(pfilename)-1; i >= 0; i--)
+@@ -209,7 +210,7 @@ bool CmidPlayer::load_sierra_ins(const std::string &fname, const CFileProvider &
+     snprintf(pfilename+j,fl-j,"patch.003");
+ 
+     f = fp.open(pfilename);
+-    free(pfilename);
++    adp_tfree(pfilename);
+     if(!f) return false;
+ 
+     f->ignore(2);
+@@ -701,6 +702,7 @@ midi_fm_playnote(i,note+cnote[c],my_midi_fm_vol_table[(cvols[c]*vel)/128]*2);
+                     case 0xf0:
+                     case 0xf7: /*sysex*/
+ 		      l=getval();
++		      if (l > (unsigned long)flen) l = (unsigned long)flen;   // libadplug patch 0003: a hostile length (up to 2^28) made these loops run for minutes
+ 		      if (datalook(pos+l)==0xf7)
+ 			i=1;
+ 		      midiprintf("{%ld}",l);
+@@ -798,6 +800,7 @@ midi_fm_playnote(i,note+cnote[c],my_midi_fm_vol_table[(cvols[c]*vel)/128]*2);
+                     case 0xff:
+                         v=getnext(1);
+                         l=getval();
++                        if (l > (unsigned long)flen) l = (unsigned long)flen;   // libadplug patch 0003
+                         midiprintf ("\n");
+                         midiprintf("{%lX_%lX}",v,l);
+                         if (v==0x51)
+diff --git a/components/libadplug/adplug/u6m.cpp b/components/libadplug/adplug/u6m.cpp
+index 037952e..d6660d1 100644
+--- a/components/libadplug/adplug/u6m.cpp
++++ b/components/libadplug/adplug/u6m.cpp
+@@ -403,10 +403,12 @@ void Cu6mPlayer::command_loop()
+   int command_nibble_hi;        // command byte, bits 4-7
+   int command_nibble_lo;        // command byte, bite 0-3
+   bool repeat_loop = true;      //
++  int guard = 0;                // libadplug patch 0003: a song without a delay command never leaves this loop
+ 
+   do
+     {
+       // extract low and high command nibbles
++      if (++guard > 100000) { songend = true; break; }
+       command_byte = read_song_byte();   // implicitly increments song_pos
+       if (command_byte < 0)              // handle invalid position
+         {
+diff --git a/components/libadplug/binio/binstr.cpp b/components/libadplug/binio/binstr.cpp
+index b262298..58d6f2b 100644
+--- a/components/libadplug/binio/binstr.cpp
++++ b/components/libadplug/binio/binstr.cpp
+@@ -19,10 +19,15 @@
+ 
+ #include "binstr.h"
+ 
++/* libadplug patch 0003: a stream that is read past its end more than this many times calls adp_eof_overrun(), which abandons the song (a loop that
++ * keeps reading zeros at the end of the data never ends otherwise). Reads past the end themselves return 0 and set Eof, as before. */
++extern "C" void adp_eof_overrun(void);
++#define ADP_EOF_OVERRUN_MAX 262144
++
+ /***** binsbase *****/
+ 
+ binsbase::binsbase(void *str, unsigned long len)
+-  : data((Byte *)str), spos((Byte *)str), length(len)
++  : pastend(false), overrun(0), data((Byte *)str), spos((Byte *)str), length(len)
+ {
+ }
+ 
+@@ -32,23 +37,19 @@ binsbase::~binsbase()
+ 
+ void binsbase::seek(long p, Offset offs)
+ {
++  /* libadplug patch 0003: integer arithmetic (data + p overflowed the pointer on a hostile offset); never leaves [data, data + length] */
++  long long np;
+   switch(offs) {
+-  case Set: spos = data + p; break;
+-  case Add: spos += p; break;
+-  case End: spos = data + length + p; break;
++  case Add: np = (long long)(spos - data) + p; break;
++  case End: np = (long long)length + p; break;
++  default: np = p; break;
+   }
+-
+-  // Seek before start of data
+-  if(spos < data) {
+-    spos = data;
+-    return;
+-  }
+-
+-  // Seek after end of data
+-  if(spos - data > length) {
+-    err |= Eof;
+-    spos = data + length;
++  if(np < 0) { spos = data; return; }
++  if(np > (long long)length) {
++    err |= Eof; pastend = true;
++    np = (long long)length;
+   }
++  spos = data + np;
+ }
+ 
+ long binsbase::pos()
+@@ -71,8 +72,10 @@ binisstream::Byte binisstream::getByte()
+ {
+   Byte in = 0;
+ 
+-  if(spos - data >= length)
+-    err |= Eof;
++  if((unsigned long)(spos - data) >= length) {
++    err |= Eof; pastend = true;
++    if(++overrun > ADP_EOF_OVERRUN_MAX) adp_eof_overrun();
++  }
+   else {
+     in = *spos;
+     spos++;
+diff --git a/components/libadplug/binio/binstr.h b/components/libadplug/binio/binstr.h
+index 33e4b12..368822f 100644
+--- a/components/libadplug/binio/binstr.h
++++ b/components/libadplug/binio/binstr.h
+@@ -30,6 +30,8 @@ public:
+ 
+   virtual void seek(long p, Offset offs = Set);
+   virtual long pos();
++  unsigned long overrun;   /* reads past the end (libadplug patch 0003) */
++  bool pastend;   /* libadplug patch 0003: a read or seek went past the end of the data (sticky; error() clears err) */
+ 
+ protected:
+   Byte	*data, *spos;

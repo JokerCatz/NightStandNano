@@ -1,0 +1,373 @@
+<!doctype html>
+<!--
+  NightStand Nano control page (Web Bluetooth). This is the source of the page; `npm run build` (see web/README.md) bundles
+  src/js/main.js and src/css/app.css into ../dist/ (app.js is one classic IIFE script, so dist/index.html also opens from file://).
+  The text written in this file is zh-TW, the default until the scripts have run (strings.js has all three languages).
+
+  Screen map (the URL hash is the route; the browser's Back button and deep links work):
+    #/now                 Now playing: visualizer, title, lyrics (3 lines), progress, output choice, sleep timer
+    #/now/lyrics          all lyrics
+    #/music               files, play mode, gapless, ReplayGain
+    #/radio               favourites, station search, direct URL
+    #/ambient             one-tap sleep preset, noise colours, scenes
+    #/settings            grid of the pages below, each with a one-line state
+    #/settings/output     volume limit
+    #/settings/fx         sound effects and equalizer
+    #/settings/night      night mode and its schedule
+    #/settings/viz        visualizer style
+    #/settings/wifi  /time  /card  /keys  /led  /lang (language and help)  /diag (status, sparklines, build stamp, log)
+  The control bar (title, transport, volume, output) is on every screen.
+
+  Query parameters (they work the same from dist/):
+    ?lang=en|zh-TW|zh-CN   overrides the language for one load (the select in Settings > Language & help is remembered: nsn.lang).
+    ?demo                  runs against a fake box in the page. ?demo=<page> also opens that page: now lyrics music radio ambient
+                           settings output fx night viz wifi time card keys led lang diag, or the old tab names of the previous layout:
+                           files -> #/music, noise -> #/ambient, bed -> #/settings/night, sys -> #/settings/diag
+                           (a #/route in the URL wins over it).
+    ?demo&viz=<spectrum|waterfall|drive|cassette> picks the visual; ?demo&tags=long fakes very long title / artist / album tags.
+    ?demo&card=bad|none starts the fake box with an unreadable / no card (a demo format makes it ok); &refuse=<reason> / &testfail=<reason> /
+                           &fmtfail=<reason> fake a refused / failed card test or format.
+    ?demo&wifi=none starts the fake box with no Wi-Fi settings (wifi set: password wrongpass1 -> wrong password, ssid Nowhere -> not found,
+                           else connects after ~3 s); ?demo&clock=none starts it with no time (src=none), &tz=<POSIX TZ> sets its zone (default CST-8).
+    ?demo&hw=spi|ledoff    the fake box reports the SD card in SPI mode / the LED disabled in the hardware settings; &hw=pending adds `hw pending 1`.
+    ?demo&shed=1           the fake box reports st.fxshed=1 (heavy effects paused because it is busy); ?demo&dac=none makes `ratetest` refuse (no dac).
+    ?demo&drop=<s>         drops the fake Bluetooth link <s> seconds after load (the page reconnects by itself); the first `out cast` in the
+                           demo drops it too, like the real box; ?demo&cast=bad|half|fail fakes underflows / one stream down / a failing first `out cast`.
+-->
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>NightStand Nano – 控制頁</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27%3E%3Ccircle cx=%2712%27 cy=%2712%27 r=%2711%27 fill=%27%230b6fd1%27/%3E%3Cpath d=%27M10 7.5l6 4.5-6 4.5z%27 fill=%27white%27/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/app.css">
+<script src="js/main.js" defer></script>
+</head>
+<body data-route="now">
+<div class="app">
+
+<header class="top">
+  <h1>NightStand Nano</h1>
+  <span class="conn"><span class="mut" id="conn"><i class="dot" id="dConn"></i><span id="connTxt" data-i18n="conn.off">未連線</span></span><button class="primary" id="btnConnect" data-i18n="btn.connect">連線</button></span>
+</header>
+
+<nav class="nav" id="nav" aria-label="主選單" data-i18n-aria="nav.aria">
+  <a class="nav-i" href="#/now" data-nav="now"><svg class="ic" data-ic="now"></svg><span data-i18n="nav.now">播放中</span></a>
+  <a class="nav-i" href="#/music" data-nav="music"><svg class="ic" data-ic="music"></svg><span data-i18n="nav.music">音樂</span></a>
+  <a class="nav-i" href="#/radio" data-nav="radio"><svg class="ic" data-ic="radio"></svg><span data-i18n="nav.radio">電台</span></a>
+  <a class="nav-i" href="#/ambient" data-nav="ambient"><svg class="ic" data-ic="ambient"></svg><span data-i18n="nav.ambient">環境音</span></a>
+  <a class="nav-i" href="#/settings" data-nav="settings"><svg class="ic" data-ic="settings"></svg><span data-i18n="nav.settings">設定</span></a>
+</nav>
+
+<div class="content" id="content">
+<div class="wrap">
+
+<div class="banners">
+  <div class="card" id="warn" data-i18n="warn.nobt">這個瀏覽器不支援 Web Bluetooth。請用電腦或 Android 的 Chrome / Edge；iPhone 請用 Bluefy 或原生 App。</div>
+  <div class="card" id="cardWarn" role="status" hidden></div>
+  <a class="ent ent-compact" id="flashHint" href="flash/" hidden><span class="ent-ic"><svg class="ic" data-ic="flash"></svg></span><span class="ent-t"><b data-i18n="flash.hint">還沒有韌體，或需要重刷？</b></span><svg class="ic chev" data-ic="chev"></svg></a>
+  <div class="card notice" id="helpNotice" role="status" hidden>
+    <span class="grow" data-i18n="help.notice">說明預設會顯示。按頁面上方的「?」可收起這一頁的說明，也可以到「設定 › 語言與說明」整個關掉。</span>
+    <span class="row"><button class="primary" id="helpOk" data-i18n="help.notice.ok">知道了</button><button id="helpOff" data-i18n="help.notice.off">隱藏說明</button></span>
+  </div>
+</div>
+
+<!-- ============ the now-playing visual: beside the page on a wide screen, on top of the Now page on a phone ============ -->
+<aside class="stage" id="stage" aria-label="正在播放" data-i18n-aria="now.aria">
+  <div class="card now">
+    <div class="viz-stage" id="vizStage" role="img" aria-label="視覺效果" data-i18n-aria="now.viz.aria"></div>
+    <div class="viz-row" id="vizMode" role="group" aria-label="視覺效果控制" data-i18n-aria="viz.controls"></div>
+    <div class="title" id="file">—</div>
+    <div class="mut" id="tags" hidden></div>
+    <div class="mut" id="meta" data-i18n="meta.off">尚未連線</div>
+    <div class="mut" id="idleHint" role="status"></div>
+    <a class="lyr3" id="lyr3" href="#/now/lyrics" hidden aria-label="顯示全部歌詞" data-i18n-aria="lyr.open"><div></div><div class="c"></div><div></div></a>
+    <div class="bar"><i id="prog"></i></div>
+  </div>
+</aside>
+
+<main class="pages" id="main">
+
+<!-- ============ #/now ============ -->
+<section class="page" id="p-now" data-page="now" aria-labelledby="t-now">
+  <div class="ph"><h2 id="t-now" data-i18n="nav.now">播放中</h2><button class="hbtn" type="button" aria-pressed="false" aria-label="顯示或隱藏這一頁的說明" data-i18n-aria="help.btn"><svg class="ic" data-ic="help"></svg></button></div>
+  <div class="card">
+    <h3 data-i18n="out.title">輸出</h3>
+    <div class="seg" id="out"><button class="ctl" data-v="auto" disabled><svg class="ic" data-ic="auto"></svg><span data-i18n="out.auto">自動</span></button><button class="ctl" data-v="dac" disabled><svg class="ic" data-ic="dac"></svg><span data-i18n="out.dac">小尾巴</span></button><button class="ctl" data-v="bt" disabled><svg class="ic" data-ic="bt"></svg><span data-i18n="out.bt">藍牙耳機</span></button><button class="ctl" data-v="cast" disabled><svg class="ic" data-ic="cast"></svg><span data-i18n="out.cast">廣播（Auracast）</span></button></div>
+    <div class="mut dots"><i class="dot" id="dDac"></i><span data-i18n="out.dac">小尾巴</span> &nbsp;<i class="dot" id="dBt"></i><span data-i18n="out.btShort">藍牙</span> &nbsp;<i class="dot" id="dCast"></i><span data-i18n="out.castShort">廣播</span></div>
+    <div class="mut castinfo" id="castInfo" hidden><div data-i18n="cast.info">其他人可以用支援 Auracast 的耳機或手機，搜尋並收聽「NightStand Nano」廣播。無法與藍牙耳機同時使用。</div><div id="castSt" role="status"></div></div>
+  </div>
+  <div class="card">
+    <h3 data-i18n="timer.title">睡眠計時</h3>
+    <div class="row"><div class="seg" id="timer"><button class="ctl" data-v="0" data-i18n="timer.off" disabled>關</button><button class="ctl" data-v="15" disabled>15</button><button class="ctl" data-v="30" disabled>30</button><button class="ctl" data-v="60" disabled>60</button><button class="ctl" data-v="90" data-i18n="timer.90" disabled>90 分</button></div><span class="mut" id="timerv"></span></div>
+    <div class="mut help" data-i18n="timer.help">時間到會淡出並停止播放。</div>
+  </div>
+  <a class="ent lyr-link" href="#/now/lyrics"><span class="ent-ic"><svg class="ic" data-ic="lyrics"></svg></span><span class="ent-t"><b data-i18n="lyr.title">歌詞</b></span><svg class="ic chev" data-ic="chev"></svg></a>
+</section>
+
+<!-- ============ #/now/lyrics ============ -->
+<section class="page" id="p-lyrics" data-page="now/lyrics" aria-labelledby="t-lyrics" hidden>
+  <div class="ph"><a class="back" href="#/now" aria-label="返回" data-i18n-aria="nav.back"><svg class="ic" data-ic="back"></svg></a><h2 id="t-lyrics" data-i18n="lyr.title">歌詞</h2></div>
+  <div class="card">
+    <div class="mut" id="lyrNote" data-i18n="lyr.idle">連線並播放有 .lrc 的曲目後，歌詞會顯示在這裡。</div>
+    <ul id="lyrList"></ul>
+  </div>
+</section>
+
+<!-- ============ #/music ============ -->
+<section class="page" id="p-music" data-page="music" aria-labelledby="t-music" hidden>
+  <div class="ph"><h2 id="t-music" data-i18n="nav.music">音樂</h2><button class="hbtn" type="button" aria-pressed="false" aria-label="顯示或隱藏這一頁的說明" data-i18n-aria="help.btn"><svg class="ic" data-ic="help"></svg></button></div>
+  <div class="cols">
+    <div class="card">
+      <h3 data-i18n="files.title">檔案</h3>
+      <div class="row"><strong class="grow" id="cwd">/sdcard</strong><button id="btnUp" class="ctl" disabled><svg class="ic" data-ic="up"></svg><span data-i18n="files.up">上一層</span></button><button id="btnPlayDir" class="ctl" disabled><svg class="ic" data-ic="play"></svg><span data-i18n="files.playDir">播放此資料夾</span></button></div>
+      <ul id="list" class="filelist"></ul>
+      <div class="rnote bad" id="playMsg" role="status"></div>
+    </div>
+    <div class="card">
+      <h3 data-i18n="mode.title">播放方式</h3>
+      <div class="seg" id="mode"><button class="ctl" data-v="folder" data-i18n="mode.folder" disabled>資料夾循環</button><button class="ctl" data-v="shuffle" data-i18n="mode.shuffle" disabled>隨機</button><button class="ctl" data-v="one" data-i18n="mode.one" disabled>單曲重複</button><button class="ctl" data-v="once" data-i18n="mode.once" disabled>播完停止</button></div>
+      <label class="sw"><input type="checkbox" role="switch" id="gapless" class="ctl" disabled><span data-i18n="gapless.label">無縫接續</span></label>
+      <div class="mut help" data-i18n="gapless.note">只對取樣率相同的連續曲目有效，曲目之間不會有空檔。</div>
+      <h3 data-i18n="rg.title">音量平衡（ReplayGain）</h3>
+      <div class="seg" id="rg"><button class="ctl" data-v="off" data-i18n="rg.off" disabled>關</button><button class="ctl" data-v="track" data-i18n="rg.track" disabled>單曲</button><button class="ctl" data-v="album" data-i18n="rg.album" disabled>專輯</button></div>
+      <div class="mut help" data-i18n="rg.hint">使用檔案內的標籤，從下一首開始生效。</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ #/radio ============ -->
+<section class="page" id="p-radio" data-page="radio" aria-labelledby="t-radio" hidden>
+  <div class="ph"><h2 id="t-radio" data-i18n="nav.radio">電台</h2><button class="hbtn" type="button" aria-pressed="false" aria-label="顯示或隱藏這一頁的說明" data-i18n-aria="help.btn"><svg class="ic" data-ic="help"></svg></button></div>
+  <div class="mut rstate" id="rstate" role="status" data-i18n="radio.stateNone">電台狀態：—</div>
+  <div class="mut help" data-i18n="radio.help">點一下電台就會開始播放；★ 會把電台存到記憶卡，收藏清單放在卡上，不在瀏覽器裡。</div>
+  <div class="cols">
+    <div class="card"><h3 data-i18n="fav.title">收藏（存在卡上）</h3><div id="favBox"><span class="mut" data-i18n="fav.hint">連線後自動載入卡上的電台清單。</span></div></div>
+    <div>
+      <div class="card"><h3 data-i18n="find.title">搜尋電台（radio-browser.info，由手機上網查詢）</h3><div id="findBox"><span class="mut" data-i18n="common.loading">載入中…</span></div></div>
+      <div class="card">
+        <h3 data-i18n="url.title">直接輸入網址</h3>
+        <div class="row"><input class="grow ctl" type="url" id="radioUrl" placeholder="http://…" aria-label="電台網址" data-i18n-aria="url.aria" disabled><button id="btnRadio" class="ctl" data-i18n="url.play" disabled>播放</button><button id="btnRadioFav" class="ctl" data-i18n="url.save" disabled>存到卡上</button></div>
+        <div class="mut rnote" id="radioNote"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ #/ambient ============ -->
+<section class="page" id="p-ambient" data-page="ambient" aria-labelledby="t-ambient" hidden>
+  <div class="ph"><h2 id="t-ambient" data-i18n="nav.ambient">環境音</h2><button class="hbtn" type="button" aria-pressed="false" aria-label="顯示或隱藏這一頁的說明" data-i18n-aria="help.btn"><svg class="ic" data-ic="help"></svg></button></div>
+  <div class="card">
+    <h3 data-i18n="amb.quick">一鍵睡眠</h3>
+    <div class="row"><button id="btBed" class="ctl" disabled><svg class="ic" data-ic="night"></svg><span data-i18n="bed.sleep">睡眠模式</span></button><button id="btWake" class="ctl" disabled data-i18n="bed.wake">結束夜間模式</button></div>
+    <div class="mut help" data-i18n="bed.hint">睡眠模式：播放噪音或場景、30 分鐘後淡出、開夜間音效、燈光調暗。</div>
+  </div>
+  <div class="cols">
+    <div class="card"><h3 data-i18n="noise.title">白噪音</h3><div class="row" id="noise"></div></div>
+    <div class="card"><h3 data-i18n="scenes.title">場景（多層環境音）</h3><ul id="scenes"><li class="mut" style="cursor:default" data-i18n="scenes.wait">連線後自動載入</li></ul></div>
+  </div>
+</section>
+
+<!-- ============ #/settings: the grid ============ -->
+<section class="page" id="p-settings" data-page="settings" aria-labelledby="t-settings" hidden>
+  <div class="ph"><h2 id="t-settings" data-i18n="nav.settings">設定</h2></div>
+  <h3 class="gh" data-i18n="set.group.sound">聲音</h3>
+  <div class="entries">
+    <a class="ent" href="#/settings/output" id="ent-output"><span class="ent-ic"><svg class="ic" data-ic="output"></svg></span><span class="ent-t"><b data-i18n="set.output">輸出與音量</b><small></small></span><span class="badge" hidden aria-label="需要注意" data-i18n-aria="set.problem">!</span><svg class="ic chev" data-ic="chev"></svg></a>
+    <a class="ent" href="#/settings/fx" id="ent-fx"><span class="ent-ic"><svg class="ic" data-ic="fx"></svg></span><span class="ent-t"><b data-i18n="set.fx">音效與等化器</b><small></small></span><span class="badge" hidden aria-label="需要注意" data-i18n-aria="set.problem">!</span><svg class="ic chev" data-ic="chev"></svg></a>
+    <a class="ent" href="#/settings/night" id="ent-night"><span class="ent-ic"><svg class="ic" data-ic="night"></svg></span><span class="ent-t"><b data-i18n="set.night">夜間模式</b><small></small></span><span class="badge" hidden aria-label="需要注意" data-i18n-aria="set.problem">!</span><svg class="ic chev" data-ic="chev"></svg></a>
+  </div>
+  <h3 class="gh" data-i18n="set.group.device">裝置</h3>
+  <div class="entries">
+    <a class="ent" href="#/settings/wifi" id="ent-wifi"><span class="ent-ic"><svg class="ic" data-ic="wifi"></svg></span><span class="ent-t"><b data-i18n="wifi.title">Wi-Fi</b><small></small></span><span class="badge" hidden aria-label="需要注意" data-i18n-aria="set.problem">!</span><svg class="ic chev" data-ic="chev"></svg></a>
+    <a class="ent" href="#/settings/time" id="ent-time"><span class="ent-ic"><svg class="ic" data-ic="clock"></svg></span><span class="ent-t"><b data-i18n="time.title">時間</b><small></small></span><span class="badge" hidden aria-label="需要注意" data-i18n-aria="set.problem">!</span><svg class="ic chev" data-ic="chev"></svg></a>
+    <a class="ent" href="#/settings/card" id="ent-card"><span class="ent-ic"><svg class="ic" data-ic="card"></svg></span><span class="ent-t"><b data-i18n="card.title">記憶卡</b><small></small></span><span class="badge" hidden aria-label="需要注意" data-i18n-aria="set.problem">!</span><svg class="ic chev" data-ic="chev"></svg></a>
+    <a class="ent" href="#/settings/keys" id="ent-keys"><span class="ent-ic"><svg class="ic" data-ic="keys"></svg></span><span class="ent-t"><b data-i18n="keys.title">耳機線控按鍵</b><small></small></span><span class="badge" hidden aria-label="需要注意" data-i18n-aria="set.problem">!</span><svg class="ic chev" data-ic="chev"></svg></a>
+    <a class="ent" href="#/settings/led" id="ent-led"><span class="ent-ic"><svg class="ic" data-ic="led"></svg></span><span class="ent-t"><b data-i18n="led.title">指示燈亮度</b><small></small></span><span class="badge" hidden aria-label="需要注意" data-i18n-aria="set.problem">!</span><svg class="ic chev" data-ic="chev"></svg></a>
+  </div>
+  <h3 class="gh" data-i18n="set.group.page">顯示與診斷</h3>
+  <div class="entries">
+    <a class="ent" href="#/settings/viz" id="ent-viz"><span class="ent-ic"><svg class="ic" data-ic="viz"></svg></span><span class="ent-t"><b data-i18n="set.viz">視覺樣式</b><small></small></span><span class="badge" hidden aria-label="需要注意" data-i18n-aria="set.problem">!</span><svg class="ic chev" data-ic="chev"></svg></a>
+    <a class="ent" href="#/settings/lang" id="ent-lang"><span class="ent-ic"><svg class="ic" data-ic="lang"></svg></span><span class="ent-t"><b data-i18n="set.lang">語言與說明</b><small></small></span><span class="badge" hidden aria-label="需要注意" data-i18n-aria="set.problem">!</span><svg class="ic chev" data-ic="chev"></svg></a>
+    <a class="ent" href="#/settings/diag" id="ent-diag"><span class="ent-ic"><svg class="ic" data-ic="diag"></svg></span><span class="ent-t"><b data-i18n="set.diag">診斷</b><small></small></span><span class="badge" hidden aria-label="需要注意" data-i18n-aria="set.problem">!</span><svg class="ic chev" data-ic="chev"></svg></a>
+  </div>
+  <h3 class="gh" data-i18n="set.group.about">關於</h3>
+  <div class="entries">
+    <a class="ent" href="flash/" id="ent-flash"><span class="ent-ic"><svg class="ic" data-ic="flash"></svg></span><span class="ent-t"><b data-i18n="about.flash">燒錄與硬體設定</b><small data-i18n="about.flash.d">用 USB 安裝或重刷韌體、設定接腳</small></span><svg class="ic chev" data-ic="chev"></svg></a>
+    <a class="ent" href="https://github.com/JokerCatz/NightStandNano/releases/latest" target="_blank" rel="noopener" id="ent-releases"><span class="ent-ic"><svg class="ic" data-ic="download"></svg></span><span class="ent-t"><b data-i18n="about.releases">下載韌體</b><small data-i18n="about.releases.d">GitHub 上的最新版本</small></span><span class="sr" data-i18n="link.newtab">（在新分頁開啟）</span><svg class="ic chev" data-ic="ext"></svg></a>
+    <a class="ent" href="https://github.com/JokerCatz/NightStandNano" target="_blank" rel="noopener" id="ent-repo"><span class="ent-ic"><svg class="ic" data-ic="code"></svg></span><span class="ent-t"><b data-i18n="about.repo">說明與原始碼</b><small data-i18n="about.repo.d">GitHub 上的說明文件與程式碼</small></span><span class="sr" data-i18n="link.newtab">（在新分頁開啟）</span><svg class="ic chev" data-ic="ext"></svg></a>
+  </div>
+</section>
+
+<!-- ============ #/settings/output ============ -->
+<section class="page" id="p-output" data-page="settings/output" aria-labelledby="t-output" hidden>
+  <div class="ph"><a class="back" href="#/settings" aria-label="返回" data-i18n-aria="nav.back"><svg class="ic" data-ic="back"></svg></a><h2 id="t-output" data-i18n="set.output">輸出與音量</h2><button class="hbtn" type="button" aria-pressed="false" aria-label="顯示或隱藏這一頁的說明" data-i18n-aria="help.btn"><svg class="ic" data-ic="help"></svg></button></div>
+  <div class="card">
+    <h3 data-i18n="vmax.title">音量上限</h3>
+    <div class="row"><input class="grow ctl" type="range" id="vmax" min="0" max="100" value="100" aria-label="音量上限" data-i18n-aria="vmax.title" disabled><span class="mut val" id="vmaxv">100</span></div>
+    <div class="mut help" data-i18n="vmax.hint">不論用哪種方式調整，音量都不會超過這個數字；下面的音量滑桿也只能調到這裡。</div>
+    <div class="mut help" data-i18n="output.perOut">每個輸出（小尾巴、藍牙耳機、廣播）各自記住自己的音量；音量列會標示現在調的是哪一個。</div>
+  </div>
+  <div class="card">
+    <h3 data-i18n="rate.title">最高取樣率</h3>
+    <div class="seg" id="dacmax"><button class="ctl" data-v="0" data-i18n="out.auto" disabled>自動</button><button class="ctl" data-v="48000" disabled>48 kHz</button><button class="ctl" data-v="96000" disabled>96 kHz</button><button class="ctl" data-v="192000" disabled>192 kHz</button><button class="ctl" data-v="384000" disabled>384 kHz</button></div>
+    <div class="mut help" data-i18n="rate.help">取樣率比這個高的檔案會先降到這個值再播放。「自動」由裝置依 DAC 的能力決定。</div>
+  </div>
+  <div class="card" id="rtCard">
+    <h3 data-i18n="rt.title">測試這個 USB DAC 支援的取樣率</h3>
+    <div class="rt-warn" data-i18n="rt.warn">測試會停止目前的播放，並透過 DAC 播放安靜的測試音，每個取樣率約 2 秒。結果只代表資料有被 DAC 接受，不代表聽起來如何。</div>
+    <div class="row"><button id="rtStart" class="ctl" data-i18n="rt.start" disabled>開始測試</button><button id="rtCancel" class="ctl" data-i18n="rt.cancel" disabled>取消</button></div>
+    <div class="mut rt-state" id="rtState" role="status" data-i18n="rt.state.none">還沒有測試結果</div>
+    <div class="rt-bar" id="rtBar" hidden><i></i></div>
+    <div class="rt-tw" id="rtTable" hidden>
+      <table><thead><tr><th scope="col" data-i18n="rt.col.rate">取樣率</th><th scope="col" data-i18n="rt.col.result">結果</th><th scope="col" data-i18n="rt.col.measured">實測</th></tr></thead><tbody id="rtBody"></tbody></table>
+    </div>
+    <div class="rt-max" id="rtMax" hidden></div>
+  </div>
+</section>
+
+<!-- ============ #/settings/fx ============ -->
+<section class="page" id="p-fx" data-page="settings/fx" aria-labelledby="t-fx" hidden>
+  <div class="ph"><a class="back" href="#/settings" aria-label="返回" data-i18n-aria="nav.back"><svg class="ic" data-ic="back"></svg></a><h2 id="t-fx" data-i18n="set.fx">音效與等化器</h2><button class="hbtn" type="button" aria-pressed="false" aria-label="顯示或隱藏這一頁的說明" data-i18n-aria="help.btn"><svg class="ic" data-ic="help"></svg></button></div>
+  <div class="card">
+    <div class="mut castnote" id="fxCast" hidden data-i18n="fx.castNote">廣播期間，較吃資源的音效會暫停。</div>
+    <div class="mut castnote" id="fxShed" hidden data-i18n="fx.shedNote">裝置太忙，較吃資源的音效已暫停；這次播放結束後會自動恢復。</div>
+    <div class="row"><span class="mut grow help" data-i18n="fx.hint">在裝置上處理聲音；這個網頁本身不出聲。</span><button id="fxOff" class="ctl" data-i18n="fx.off" disabled>全部關閉</button></div>
+    <div id="fxBody"><span class="mut" data-i18n="fx.wait">連線後自動載入</span></div>
+  </div>
+</section>
+
+<!-- ============ #/settings/night ============ -->
+<section class="page" id="p-night" data-page="settings/night" aria-labelledby="t-night" hidden>
+  <div class="ph"><a class="back" href="#/settings" aria-label="返回" data-i18n-aria="nav.back"><svg class="ic" data-ic="back"></svg></a><h2 id="t-night" data-i18n="set.night">夜間模式</h2><button class="hbtn" type="button" aria-pressed="false" aria-label="顯示或隱藏這一頁的說明" data-i18n-aria="help.btn"><svg class="ic" data-ic="help"></svg></button></div>
+  <div class="card">
+    <div class="mut help" data-i18n="night.help">小音量補償、防突然大聲、燈光調暗。</div>
+    <div class="row"><div class="seg" id="night"><button class="ctl" data-v="on" data-i18n="night.on" disabled>開</button><button class="ctl" data-v="off" data-i18n="night.off" disabled>關</button></div></div>
+    <h3 data-i18n="night.auto">自動</h3>
+    <div class="row"><input type="time" id="nFrom" class="ctl" aria-label="夜間開始" data-i18n-aria="night.fromAria" disabled><span class="mut" data-i18n="night.to">到</span><input type="time" id="nTo" class="ctl" aria-label="夜間結束" data-i18n-aria="night.toAria" disabled><button id="btnNight" class="ctl" data-i18n="night.set" disabled>設定</button><button id="btnNightOff" class="ctl" data-i18n="night.clear" disabled>取消</button></div>
+    <div class="mut" id="nightv"></div>
+  </div>
+</section>
+
+<!-- ============ #/settings/viz ============ -->
+<section class="page" id="p-viz" data-page="settings/viz" aria-labelledby="t-viz" hidden>
+  <div class="ph"><a class="back" href="#/settings" aria-label="返回" data-i18n-aria="nav.back"><svg class="ic" data-ic="back"></svg></a><h2 id="t-viz" data-i18n="set.viz">視覺樣式</h2></div>
+  <div class="card"><div id="vizOpts"><span class="mut" data-i18n="common.loading">載入中…</span></div></div>
+</section>
+
+<!-- ============ #/settings/wifi ============ -->
+<section class="page" id="p-wifi" data-page="settings/wifi" aria-labelledby="t-wifi" hidden>
+  <div class="ph"><a class="back" href="#/settings" aria-label="返回" data-i18n-aria="nav.back"><svg class="ic" data-ic="back"></svg></a><h2 id="t-wifi" data-i18n="wifi.title">Wi-Fi</h2><button class="hbtn" type="button" aria-pressed="false" aria-label="顯示或隱藏這一頁的說明" data-i18n-aria="help.btn"><svg class="ic" data-ic="help"></svg></button></div>
+  <div class="card"><div id="wifiBox"><span class="mut" data-i18n="card.wait">連線後自動載入</span></div></div>
+</section>
+
+<!-- ============ #/settings/time ============ -->
+<section class="page" id="p-time" data-page="settings/time" aria-labelledby="t-time" hidden>
+  <div class="ph"><a class="back" href="#/settings" aria-label="返回" data-i18n-aria="nav.back"><svg class="ic" data-ic="back"></svg></a><h2 id="t-time" data-i18n="time.title">時間</h2></div>
+  <div class="card"><div id="timeBox"><span class="mut" data-i18n="card.wait">連線後自動載入</span></div></div>
+</section>
+
+<!-- ============ #/settings/card ============ -->
+<section class="page" id="p-card" data-page="settings/card" aria-labelledby="t-card" hidden>
+  <div class="ph"><a class="back" href="#/settings" aria-label="返回" data-i18n-aria="nav.back"><svg class="ic" data-ic="back"></svg></a><h2 id="t-card" data-i18n="card.title">記憶卡</h2><button class="hbtn" type="button" aria-pressed="false" aria-label="顯示或隱藏這一頁的說明" data-i18n-aria="help.btn"><svg class="ic" data-ic="help"></svg></button></div>
+  <div class="card"><div id="cardBox"><span class="mut" data-i18n="card.wait">連線後自動載入</span></div></div>
+</section>
+
+<!-- ============ #/settings/keys ============ -->
+<section class="page" id="p-keys" data-page="settings/keys" aria-labelledby="t-keys" hidden>
+  <div class="ph"><a class="back" href="#/settings" aria-label="返回" data-i18n-aria="nav.back"><svg class="ic" data-ic="back"></svg></a><h2 id="t-keys" data-i18n="keys.title">耳機線控按鍵</h2><button class="hbtn" type="button" aria-pressed="false" aria-label="顯示或隱藏這一頁的說明" data-i18n-aria="help.btn"><svg class="ic" data-ic="help"></svg></button></div>
+  <div class="card">
+    <div class="mut help" id="keyHints"><div data-i18n="keys.hint.wired">需要把有線耳機插在 USB-C 音效轉接頭（USB DAC）上。</div><div data-i18n="keys.hint.bt">藍牙耳機自己的按鍵另外運作，不在這裡設定。</div></div>
+    <div id="keyPresets">
+      <button class="ctl" data-n="1" data-i18n="keys.preset.1" disabled>單鍵耳機</button>
+      <button class="ctl" data-n="2" data-i18n="keys.preset.2" disabled>雙鍵耳機（+ −）</button>
+      <button class="ctl" data-n="3" data-i18n="keys.preset.3" disabled>三鍵耳機</button>
+    </div>
+    <div class="mut" id="keyCustom" hidden data-i18n="keys.custom">自訂</div>
+    <div id="keyGrid"></div>
+    <div class="mut help" data-i18n="keys.hint.delay">沒有設定連按兩下、連按三下的按鍵，按下去立刻動作；否則按一下要等 0.4 秒，確認沒有接著連按。</div>
+    <div id="keyLast" data-i18n="keys.last.none">還沒有偵測到按鍵。按一下耳機上的按鍵試試。</div>
+  </div>
+</section>
+
+<!-- ============ #/settings/led ============ -->
+<section class="page" id="p-led" data-page="settings/led" aria-labelledby="t-led" hidden>
+  <div class="ph"><a class="back" href="#/settings" aria-label="返回" data-i18n-aria="nav.back"><svg class="ic" data-ic="back"></svg></a><h2 id="t-led" data-i18n="led.title">指示燈亮度</h2></div>
+  <div class="card warnbox" id="ledOff" role="status" hidden><span data-i18n="led.offNote">指示燈已在硬體設定中停用，所以沒有亮度可以調整。要修改請用 USB 到燒錄頁。</span> <a href="flash/" data-i18n="about.flash">燒錄與硬體設定</a></div>
+  <div class="card" id="ledCard"><div class="row"><input class="grow ctl" type="range" id="led" min="0" max="60" value="12" aria-label="指示燈亮度" data-i18n-aria="led.title" disabled><span class="mut val" id="ledv">12</span></div></div>
+</section>
+
+<!-- ============ #/settings/lang ============ -->
+<section class="page" id="p-lang" data-page="settings/lang" aria-labelledby="t-lang" hidden>
+  <div class="ph"><a class="back" href="#/settings" aria-label="返回" data-i18n-aria="nav.back"><svg class="ic" data-ic="back"></svg></a><h2 id="t-lang" data-i18n="set.lang">語言與說明</h2></div>
+  <div class="card">
+    <h3 data-i18n="lang.title">語言</h3>
+    <select id="langSel" class="viz-select" style="max-width:16rem" aria-label="語言" data-i18n-aria="lang.title">
+      <option value="auto" data-i18n="lang.auto">跟隨瀏覽器</option><option value="en">English</option><option value="zh-TW">繁體中文</option><option value="zh-CN">简体中文</option>
+    </select>
+  </div>
+  <div class="card">
+    <label class="sw"><input type="checkbox" role="switch" id="helpSw"><span data-i18n="help.switch">顯示說明</span></label>
+    <div class="mut" data-i18n="help.switch.note">說明會顯示在各項設定的下方；會造成後果的警告一律會顯示。</div>
+  </div>
+</section>
+
+<!-- ============ #/settings/diag ============ -->
+<section class="page" id="p-diag" data-page="settings/diag" aria-labelledby="t-diag" hidden>
+  <div class="ph"><a class="back" href="#/settings" aria-label="返回" data-i18n-aria="nav.back"><svg class="ic" data-ic="back"></svg></a><h2 id="t-diag" data-i18n="set.diag">診斷</h2></div>
+  <div class="card">
+    <h3 data-i18n="sys.title">狀態</h3>
+    <div class="mut" id="sysv">—</div>
+    <div id="sparks">
+      <div class="sprow" id="spc0" hidden><span class="mut" data-i18n="sys.spark.cpu0">CPU 核心 0</span><canvas></canvas><span class="mut sv"></span></div>
+      <div class="sprow" id="spc1" hidden><span class="mut" data-i18n="sys.spark.cpu1">CPU 核心 1</span><canvas></canvas><span class="mut sv"></span></div>
+      <div class="sprow" id="spm"><span class="mut" data-i18n="sys.spark.mem">可用記憶體</span><canvas></canvas><span class="mut sv"></span></div>
+    </div>
+    <div class="mut"><span data-i18n="diag.fw">韌體版本</span>：<span id="fwVer">—</span></div>
+    <div class="mut" id="fwDetail"></div>
+    <div class="mut"><span data-i18n="diag.web">網頁版本</span>：<span id="buildStamp"></span></div>
+  </div>
+  <div class="card">
+    <h3 data-i18n="hw.title">硬體接腳（唯讀）</h3>
+    <div class="warnbox" id="hwPending" role="status" hidden data-i18n="hw.pending">有尚未套用的硬體設定，重新啟動後生效。</div>
+    <div id="hwBox"></div>
+    <div class="mut" data-i18n="hw.flasher">這些接腳要在燒錄頁透過 USB 才能修改；藍牙連線下只能查看。</div>
+  </div>
+  <div class="card">
+    <h3 data-i18n="diag.links">連結</h3>
+    <ul class="links">
+      <li><a href="flash/" data-i18n="about.flash">燒錄與硬體設定</a></li>
+      <li><a href="https://github.com/JokerCatz/NightStandNano/releases/latest" target="_blank" rel="noopener"><span data-i18n="about.releases">下載韌體</span><span class="sr" data-i18n="link.newtab">（在新分頁開啟）</span></a></li>
+      <li><a href="https://github.com/JokerCatz/NightStandNano" target="_blank" rel="noopener"><span data-i18n="about.repo">說明與原始碼</span><span class="sr" data-i18n="link.newtab">（在新分頁開啟）</span></a></li>
+    </ul>
+  </div>
+  <div class="card"><h3 data-i18n="sys.log">紀錄</h3><pre id="log"></pre></div>
+</section>
+
+</main>
+</div><!-- .wrap -->
+</div><!-- .content -->
+
+<!-- ============ the control bar: on every screen ============ -->
+<footer class="cbar" id="cbar" aria-label="播放控制" data-i18n-aria="cb.aria">
+  <div class="cb-main">
+    <a class="cb-info" href="#/now" id="cbInfo"><span class="cb-title" id="cbTitle">—</span><span class="cb-sub" id="cbSub"></span></a>
+    <div class="cb-tr">
+      <button id="btnPrev" class="ctl ib" aria-label="上一首" data-i18n-aria="tr.prev" disabled><svg class="ic" data-ic="prev"></svg></button>
+      <button id="btnPlay" class="ctl ib play" aria-label="播放或暫停" data-i18n-aria="tr.play" disabled><svg class="ic" data-ic="play"></svg></button>
+      <button id="btnNext" class="ctl ib" aria-label="下一首" data-i18n-aria="tr.next" disabled><svg class="ic" data-ic="next"></svg></button>
+      <button id="btnStop" class="ctl ib" aria-label="停止" data-i18n-aria="tr.stop" disabled><svg class="ic" data-ic="stop"></svg></button>
+    </div>
+  </div>
+  <div class="cb-vol">
+    <svg class="ic" data-ic="vol" aria-hidden="true"></svg>
+    <input class="ctl" type="range" id="vol" min="0" max="100" value="70" aria-label="音量" data-i18n-aria="vol.label" disabled>
+    <span class="val" id="volv">70</span>
+    <a class="cb-out" id="cbOut" href="#/now" hidden><svg class="ic" id="cbOutIc" data-ic="dac"></svg><span id="cbOutTxt"></span><span class="sr" id="volFor"></span></a>
+  </div>
+</footer>
+
+</div><!-- .app -->
+</body>
+</html>

@@ -1,0 +1,132 @@
+diff --git a/components/libhvl/hvl/hvl_replay.c b/components/libhvl/hvl/hvl_replay.c
+index e0baf62..aee4eee 100644
+--- a/components/libhvl/hvl/hvl_replay.c
++++ b/components/libhvl/hvl/hvl_replay.c
+@@ -173,6 +173,7 @@ struct hvl_tune *hvl_load_ahx( const uint8 *buf, uint32 buflen, uint32 defstereo
+   ht->ht_WaveformTab[0]  = &waves[WO_TRIANGLE_04];
+   ht->ht_WaveformTab[1]  = &waves[WO_SAWTOOTH_04];
+   ht->ht_WaveformTab[3]  = &waves[WO_WHITENOISE];
++  ht->ht_WaveformTab[2]  = &waves[WO_SQUARES];   /* JC 0002: never NULL */
+ 
+   ht->ht_Channels        = 4;
+   ht->ht_PositionNr      = posn;
+@@ -310,6 +311,8 @@ struct hvl_tune *hvl_load_ahx( const uint8 *buf, uint32 buflen, uint32 defstereo
+       ht->ht_Instruments[i].ins_PList.pls_Entries[j].ple_FX[1]      = k;
+       ht->ht_Instruments[i].ins_PList.pls_Entries[j].ple_FX[0]      = l;
+       ht->ht_Instruments[i].ins_PList.pls_Entries[j].ple_Waveform   = ((bptr[0]<<1)&6) | (bptr[1]>>7);
++      if( ht->ht_Instruments[i].ins_PList.pls_Entries[j].ple_Waveform > 4 )   /* JC 0002: waveforms are 0..4; 5..7 indexed an empty table slot */
++        ht->ht_Instruments[i].ins_PList.pls_Entries[j].ple_Waveform = 0;
+       ht->ht_Instruments[i].ins_PList.pls_Entries[j].ple_Fixed      = (bptr[1]>>6)&1;
+       ht->ht_Instruments[i].ins_PList.pls_Entries[j].ple_Note       = bptr[1]&0x3f;
+       ht->ht_Instruments[i].ins_PList.pls_Entries[j].ple_FXParam[0] = bptr[2];
+@@ -398,6 +401,7 @@ struct hvl_tune *hvl_load_hvl( const uint8 *buf, uint32 buflen, uint32 defstereo
+   ht->ht_WaveformTab[0]  = &waves[WO_TRIANGLE_04];
+   ht->ht_WaveformTab[1]  = &waves[WO_SAWTOOTH_04];
+   ht->ht_WaveformTab[3]  = &waves[WO_WHITENOISE];
++  ht->ht_WaveformTab[2]  = &waves[WO_SQUARES];   /* JC 0002: never NULL */
+ 
+   ht->ht_PositionNr      = posn;
+   ht->ht_Channels        = (buf[8]>>2)+4;
+@@ -439,6 +443,8 @@ struct hvl_tune *hvl_load_hvl( const uint8 *buf, uint32 buflen, uint32 defstereo
+   for( i=0; i<ht->ht_SubsongNr; i++ )
+   {
+     ht->ht_Subsongs[i] = (bptr[0]<<8)|bptr[1];
++    if( ht->ht_Subsongs[i] >= ht->ht_PositionNr )   /* JC 0002: as the AHX loader does; an out-of-range start walked ht_Positions[] */
++      ht->ht_Subsongs[i] = 0;
+     bptr += 2;
+   }
+   
+@@ -540,6 +546,8 @@ struct hvl_tune *hvl_load_hvl( const uint8 *buf, uint32 buflen, uint32 defstereo
+       ht->ht_Instruments[i].ins_PList.pls_Entries[j].ple_FX[0] = bptr[0]&0xf;
+       ht->ht_Instruments[i].ins_PList.pls_Entries[j].ple_FX[1] = (bptr[1]>>3)&0xf;
+       ht->ht_Instruments[i].ins_PList.pls_Entries[j].ple_Waveform = bptr[1]&7;
++      if( ht->ht_Instruments[i].ins_PList.pls_Entries[j].ple_Waveform > 4 )   /* JC 0002 */
++        ht->ht_Instruments[i].ins_PList.pls_Entries[j].ple_Waveform = 0;
+       ht->ht_Instruments[i].ins_PList.pls_Entries[j].ple_Fixed = (bptr[2]>>6)&1;
+       ht->ht_Instruments[i].ins_PList.pls_Entries[j].ple_Note  = bptr[2]&0x3f;
+       ht->ht_Instruments[i].ins_PList.pls_Entries[j].ple_FXParam[0] = bptr[3];
+@@ -657,7 +665,7 @@ void hvl_process_stepfx_1( struct hvl_tune *ht, struct hvl_voice *voice, int32 F
+       ht->ht_PosJump      = ht->ht_PosNr+1;
+       ht->ht_PosJumpNote  = (FXParam & 0x0f) + (FXParam>>4)*10;
+       ht->ht_PatternBreak = 1;
+-      if( ht->ht_PosJumpNote >  ht->ht_TrackLength )
++      if( ht->ht_PosJumpNote >= ht->ht_TrackLength )   /* JC 0002: was > */
+         ht->ht_PosJumpNote = 0;
+       break;
+     
+@@ -1468,6 +1476,7 @@ void hvl_process_frame( struct hvl_tune *ht, struct hvl_voice *voice )
+     const int8 *AudioSource;
+ 
+     AudioSource = ht->ht_WaveformTab[voice->vc_Waveform];
++    if( !AudioSource ) AudioSource = ht->ht_WaveformTab[0];   /* JC 0002: an unfilled slot (the square buffer is built later) */
+ 
+     if( voice->vc_Waveform != 3-1 )
+       AudioSource += ((voice->vc_FilterPos < 1 ? 1 : voice->vc_FilterPos > 63 ? 63 : voice->vc_FilterPos)-0x20)*(0xfc+0xfc+0x80*0x1f+0x80+0x280*3);
+diff --git a/components/libhvl/hvl/hvl_tables.c b/components/libhvl/hvl/hvl_tables.c
+index a2d1061..93c16df 100644
+--- a/components/libhvl/hvl/hvl_tables.c
++++ b/components/libhvl/hvl/hvl_tables.c
+@@ -1,3 +1,9 @@
++#ifdef ESP_PLATFORM
++#include "freertos/FreeRTOS.h"
++#include "freertos/task.h"
++#else
++#include <sched.h>
++#endif
+ #include <math.h>
+ #include <stdlib.h>
+ 
+@@ -606,25 +612,47 @@ void hvl_GenTables( void )
+ int8 *waves;
+ uint32 panning_left[256], panning_right[256];
+ 
+-/* chip2a: the tables are generated when the first tune is loaded and freed with the last one */
+-static int tables_users;
++/* chip2a: the tables are generated when the first tune is loaded and freed with the last one.
++ * JC 0002: three tasks open and close tunes (aud_pre, the UI probe, the audio task): the count and the build are under a spin lock
++ * (zero-initialised statics: PSRAM through linker.lf, like the TTA claim flag). */
++static int tables_users, tables_lock;
++
++static void tables_lock_take( void )
++{
++	while( __atomic_exchange_n( &tables_lock, 1, __ATOMIC_ACQUIRE ) )
++	{
++#ifdef ESP_PLATFORM
++		vTaskDelay( 1 );
++#else
++		sched_yield();
++#endif
++	}
++}
++
++static void tables_lock_give( void ) { __atomic_store_n( &tables_lock, 0, __ATOMIC_RELEASE ); }
++
+ BOOL hvl_TablesAcquire( void )
+ {
++	BOOL ok = TRUE;
++	tables_lock_take();
+ 	if( tables_users == 0 )
+ 	{
+ 		waves = (int8 *)malloc( WAVES_SIZE );
+-		if( !waves ) return FALSE;
+-		hvl_GenTables();
++		if( !waves ) ok = FALSE;
++		else hvl_GenTables();
+ 	}
+-	tables_users++;
+-	return TRUE;
++	if( ok ) tables_users++;
++	tables_lock_give();
++	return ok;
+ }
+ 
+ void hvl_TablesRelease( void )
+ {
++	tables_lock_take();
+ 	if( tables_users > 0 && --tables_users == 0 )
+ 	{
+ 		free( waves );
+ 		waves = NULL;
+ 	}
++	tables_lock_give();
+ }

@@ -1,0 +1,6 @@
+# esptool-js 0.7.1 (vendored, unmodified)
+- Origin: copied byte for byte from the owner's JukeDial web tool (`tools/web/vendor/esptool-js/0.7.1/`), which took it from the npm registry tarball https://registry.npmjs.org/esptool-js/-/esptool-js-0.7.1.tgz (integrity `sha512-vw1isT5ROHgpRmMG3y6B81dceeZ7O1WhF1x05qFbAlH8N0N/pOQqODzJLA+36lCbOXCw06iA4CWctyrQQ7VeSA==`, checked there before extracting).
+- Licence: Apache-2.0 (`LICENSE`). The package has no NOTICE of its own; `NOTICE` here records the Espressif copyright and the pako 2.1.0 (MIT AND Zlib) text that bundle.js inlines.
+- Files: `bundle.js` (single-file ES module, pako inlined, no network calls, no eval), `LICENSE`, `NOTICE`. `SHA256SUMS` lists them; `npm run check` verifies it, and the build copies the three files to `dist/vendor/esptool-js/0.7.1/`.
+- ESP32-S31: this version has the ROM class (`CHIP_NAME` "ESP32-S31", `IMAGE_CHIP_ID` 32, `BOOTLOADER_FLASH_OFFSET` 0x2000) and also a stub JSON. This page never loads the stub (see `src/js/core/flasher.js`: the firmware is flashed with `--no-stub`).
+- Upgrade: add a new version folder, repeat the download in a scratch folder, check the sha512, update `ESPTOOL_VERSION` in `src/js/core/flasher.js` and `build.mjs`, never edit the bundle.

@@ -1,0 +1,11 @@
+menu "Player core effects"
+
+    config FX_VELVET_ROOM
+        bool "velvet room reverb (heavy; measured first)"
+        default n
+        help
+            Adds the velvet-noise feedback-delay-network reverb "velvet_room" to the effect chain, between the
+            freeverb reverb and the limiter. It is a heavy effect (one of the cost classes the chain suspends
+            while the Bluetooth link needs the CPU) and is left out until the board measurements say it fits.
+
+endmenu

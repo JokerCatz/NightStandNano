@@ -1,0 +1,42 @@
+0005-lite-compat
+LIBXMP_LITE_COMPAT: MOD / IT / player behave as libxmp-lite (no per-tracker IT flow mode, no PT full-repeat flag, no invert loop) so existing files render bit-identically
+
+--- a/src/loaders/it_load.c
++++ b/src/loaders/it_load.c
+@@ -344,7 +344,9 @@
+ static void identify_tracker(struct module_data *m, struct it_file_header *ifh,
+ 			     int pat_before_smp, int *is_mpt_116)
+ {
+-#ifndef LIBXMP_CORE_PLAYER
++	/* JukeDial patch 0005: LIBXMP_LITE_COMPAT keeps the libxmp-lite behaviour of IT files (no per-tracker flow mode or
++	 * ModPlug preamp), so today's IT files render bit-identically */
++#if !defined(LIBXMP_CORE_PLAYER) && !defined(LIBXMP_LITE_COMPAT)
+ 	char tracker_name[40];
+ 	int sample_mode = ~ifh->flags & IT_USE_INST;
+ 
+--- a/src/loaders/mod_load.c
++++ b/src/loaders/mod_load.c
+@@ -1052,7 +1052,12 @@
+ 	if (!mod->xxs[i].len)
+ 	    continue;
+ 
++#ifdef LIBXMP_LITE_COMPAT
++	/* JukeDial patch 0005: libxmp-lite never sets the Protracker full-repeat flag */
++	flags = 0;
++#else
+ 	flags = (ptkloop && mod->xxs[i].lps == 0) ? SAMPLE_FLAG_FULLREP : 0;
++#endif
+ 
+ #ifdef LIBXMP_CORE_PLAYER
+ 	if (libxmp_load_sample(m, f, flags, &mod->xxs[i], NULL) < 0)
+--- a/src/player.c
++++ b/src/player.c
+@@ -1695,7 +1695,7 @@
+ 	process_frequency(ctx, chn, act);
+ 	process_pan(ctx, chn, act);
+ 
+-#ifndef LIBXMP_CORE_PLAYER
++#if !defined(LIBXMP_CORE_PLAYER) && !defined(LIBXMP_LITE_COMPAT)	/* JukeDial patch 0005: no invert-loop effect, as in libxmp-lite */
+ 	if (HAS_QUIRK(QUIRK_PROTRACK | QUIRK_INVLOOP) && xc->ins < mod->ins) {
+ 		update_invloop(ctx, xc);
+ 	}
