@@ -1,23 +1,28 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 // #/music: the file browser, play folder, play mode, gapless and ReplayGain.
 // A name that ends in "/" is a folder; a .zip archive is listed that way too (`ls /sdcard/x.zip` lists its entries, which play like files), with its own icon.
-import { app, $, on, setT, segSet, segBind, emptyLi, MODES, RGS } from "../core/app.js";
+import { app, $, on, t, setT, segSet, segBind, emptyLi, MODES, RGS } from "../core/app.js";
 import { send } from "../core/link.js";
 import { refreshStatus } from "../core/status.js";
-import { playError, inZip, isZipEntry } from "../lib/fw.js";
+import { playError, playErrView, inZip, isZipEntry } from "../lib/fw.js";
+import { describeEvent, skipView } from "../lib/events.js";
+import { fetchEvents } from "../core/evfeed.js";
 
-// a failed `play` is shown for a few seconds under the list (the box answers `play: <esp error name>`; `play: ESP_OK` is success)
-let msgTimer = 0;
-function playMsg(err) {
-  const m = $("playMsg"); clearTimeout(msgTimer);
-  if (!err) { m.textContent = ""; m.removeAttribute("data-i18n"); m.removeAttribute("data-i18n-p"); return; }
-  setT(m, err.key, { code: err.code });
+// A failed `play` (the box answers `play: <esp error name>[ <detail>]`; `play: ESP_OK` is success) or a track the box skipped (event `skip ...`) is shown
+// for a few seconds under the list. view(sep) -> { key, p }; kept, so the text can be rebuilt on a language switch (the chip list separator is per language).
+let msgTimer = 0, msgView = null;
+function showMsg() { const v = msgView(t("list.sep")); setT($("playMsg"), v.key, v.p); }
+function playMsg(view) {
+  const m = $("playMsg"); clearTimeout(msgTimer); msgView = view;
+  if (!view) { m.textContent = ""; m.removeAttribute("data-i18n"); m.removeAttribute("data-i18n-p"); return; }
+  showMsg();
   msgTimer = setTimeout(() => playMsg(null), 8000);
 }
 async function play(path) {
   playMsg(null);
   const r = await send("play " + path);
-  playMsg(playError(r));
+  const err = playError(r);
+  playMsg(err && (sep => playErrView(err, sep)));
   refreshStatus();
 }
 // the "play this folder" button reads "play this archive" at or inside a zip
@@ -48,7 +53,20 @@ export function initMusic() {
   segBind("mode", v => send("mode " + v));
   segBind("rg", v => send("rg " + v));
   $("gapless").onchange = async () => { app.gapUntil = Date.now() + 3000; await send("gapless " + ($("gapless").checked ? "on" : "off")); app.gapUntil = 0; refreshStatus(); };
+  // skips while this page is open: events are fetched (quietly, incrementally) after the playing file changed and every ~5 s while something plays
+  const watching = () => app.link === "on" && app.route === "music" && !!app.state && app.state.st === "playing";
+  let lastFile = null;
+  setInterval(() => { if (watching()) fetchEvents(); }, 5000);
+  on("events", ({ added }) => {
+    if (app.route !== "music") return;
+    for (const e of added) {   // newest first: the latest skip of this reply (the first fetch may bring old ones: only recent ones count)
+      const d = describeEvent(e.text);
+      if (d.kind === "skip" && e.at >= Date.now() - 20000) { playMsg(sep => skipView(d, sep)); break; }
+    }
+  });
+  on("lang", () => { if (msgView) showMsg(); });
   on("status", state => {
+    if (state.file !== lastFile) { const was = lastFile; lastFile = state.file; if (was !== null && watching()) fetchEvents(); }
     segSet("mode", MODES[state.mode] || "folder");
     if (typeof state.rg === "number") segSet("rg", RGS[state.rg] || "off");
     for (const li of $("list").children) li.classList.toggle("cur", !!state.file && li.dataset.name === state.file && state.st !== "idle");

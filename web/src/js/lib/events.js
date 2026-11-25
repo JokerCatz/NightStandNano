@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 // The box's recent events (`events` / `events <seq>`): parser, the page-side list and the readable form of an entry.
 //   ev <seq> <age s> <text>   one per entry, oldest first;   ev end <next seq>   last line.
-// Texts: `wired <button><gesture> <action>`, `bt 0x<hex> <action>`; anything else is shown as received.
+// Texts: `wired <button><gesture> <action>`, `bt 0x<hex> <action>`, `skip <file>: too heavy for <output>`, `skip <file>: chip <names>`;
+// anything else is shown as received.
+import { outParam, chipDetail, heavyDetail } from "./fw.js";
 export const MAX_EVENTS = 100;
 
 // AVRCP passthrough operation ids the page names (the rest is shown as hex)
@@ -18,15 +20,25 @@ export function parseEvents(lines) {
   return { entries, next };
 }
 
-// text -> { kind: "wired", b, g, a } | { kind: "bt", code, name, a } | { kind: "raw", text }
+// text -> { kind: "wired", b, g, a } | { kind: "bt", code, name, a } | { kind: "skip", file, out } (too heavy) | { kind: "skip", file, chips, mixed } | { kind: "raw", text }
 export function describeEvent(text) {
   let m;
+  if ((m = /^skip (.+?): (too heavy for \S+)$/.exec(text)) && heavyDetail(m[2])) return { kind: "skip", file: m[1], out: heavyDetail(m[2]) };
+  if ((m = /^skip (.+): (chip\s+.+)$/.exec(text))) { const c = chipDetail(m[2]); if (c) return { kind: "skip", file: m[1], chips: c.chips, mixed: c.mixed }; }
   if ((m = /^wired ([cpm])([123h]) (\S+)$/.exec(text))) return { kind: "wired", b: m[1], g: m[2], a: m[3] };
   if ((m = /^bt 0x([0-9a-fA-F]{1,4}) (\S+)$/.exec(text))) {
     const n = parseInt(m[1], 16);
     return { kind: "bt", code: "0x" + n.toString(16).toUpperCase().padStart(2, "0"), name: AVRCP_NAMES[n] || null, a: m[2] };
   }
   return { kind: "raw", text };
+}
+
+// a skip description -> { key, p } for t(key, p); sep joins the chip names. An output other than dac gets the hint that a lighter output (the DAC) can play it.
+export function skipView(d, sep) {
+  const p = { f: d.file };
+  if (d.chips) { p.c = d.chips.join(sep); return { key: d.mixed ? "ev.skip.chipMixed" : "ev.skip.chip", p }; }
+  p.o = outParam(d.out); p.d = { t: "out.dac" };
+  return { key: d.out === "dac" ? "ev.skip.heavy" : "ev.skip.heavyTry", p };
 }
 
 // The page-side list: newest first, at most MAX_EVENTS. state = { next: null | number, list: [{ id, at, text }] }.

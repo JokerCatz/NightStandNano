@@ -716,5 +716,16 @@ export const STRINGS = {
   "play.err.nomem": { en: "Not enough memory to play this file", "zh-TW": "記憶體不足，無法播放這個檔案", "zh-CN": "内存不足，无法播放这个文件" },
   "play.err.notsup": { en: "This format can't be played", "zh-TW": "不支援這種格式", "zh-CN": "不支持这种格式" },
   "play.err.other": { en: "Could not play ({code})", "zh-TW": "無法播放（{code}）", "zh-CN": "无法播放（{code}）" },
+  "play.err.chip": { en: "This file needs sound chips the box doesn't support yet: {c}", "zh-TW": "這個檔案需要裝置還不支援的音源晶片：{c}", "zh-CN": "这个文件需要设备暂不支持的音源芯片：{c}" },
+  "play.err.chipMixed": { en: "This file needs sound chips the box doesn't support yet: {c} (mixed)", "zh-TW": "這個檔案需要裝置還不支援的音源晶片：{c}（混用）", "zh-CN": "这个文件需要设备暂不支持的音源芯片：{c}（混用）" },
+  "play.err.heavy": { en: "This file is too heavy for {o}", "zh-TW": "{o}這個輸出負擔太重，無法播放這個檔案", "zh-CN": "{o}这个输出负载过高，无法播放这个文件" },
+  "play.err.heavyTry": { en: "This file is too heavy for {o}; a lighter output ({d}) can play it", "zh-TW": "{o}這個輸出負擔太重，無法播放這個檔案；改用{d}可以播放", "zh-CN": "{o}这个输出负载过高，无法播放这个文件；换用{d}可以播放" },
+  "play.err.notsupD": { en: "This format can't be played ({x})", "zh-TW": "不支援這種格式（{x}）", "zh-CN": "不支持这种格式（{x}）" },
+  "play.err.otherD": { en: "Could not play ({code}: {x})", "zh-TW": "無法播放（{code}：{x}）", "zh-CN": "无法播放（{code}：{x}）" },
+  "list.sep": { en: ", ", "zh-TW": "、", "zh-CN": "、" },
+  "ev.skip.heavy": { en: "Skipped {f}: too heavy for {o}", "zh-TW": "跳過 {f}：{o}這個輸出負擔太重", "zh-CN": "跳过 {f}：{o}这个输出负载过高" },
+  "ev.skip.heavyTry": { en: "Skipped {f}: too heavy for {o}; a lighter output ({d}) can play it", "zh-TW": "跳過 {f}：{o}這個輸出負擔太重，改用{d}可以播放", "zh-CN": "跳过 {f}：{o}这个输出负载过高，换用{d}可以播放" },
+  "ev.skip.chip": { en: "Skipped {f}: unsupported sound chip {c}", "zh-TW": "跳過 {f}：不支援的音源晶片 {c}", "zh-CN": "跳过 {f}：不支持的音源芯片 {c}" },
+  "ev.skip.chipMixed": { en: "Skipped {f}: unsupported sound chip {c} (mixed)", "zh-TW": "跳過 {f}：不支援的音源晶片 {c}（混用）", "zh-CN": "跳过 {f}：不支持的音源芯片 {c}（混用）" },
 };
 

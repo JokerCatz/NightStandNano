@@ -71,3 +71,25 @@ test('radio: rows, HLS tag, soft warning stays for other codecs', () => {
   r = toRow(st({ url: 'https://a.example/x.m3u8', url_resolved: 'https://a.example/x.mp3' })); assert.strictEqual(r.hls, false);
   assert.strictEqual(toRow(st({ stationuuid: 'nope' })), null);
 });
+
+test('events: skip lines are described and rendered in three languages', async () => {
+  const { skipView } = await import('../src/js/lib/events.js');
+  const { I18N } = await import('../src/js/core/i18n.js');
+  const say = (lang, text) => { I18N.setLang(lang); const d = describeEvent(text); assert.strictEqual(d.kind, 'skip', text); const v = skipView(d, I18N.t('list.sep')); return I18N.t(v.key, v.p); };
+  assert.deepStrictEqual(describeEvent('skip a b.vgm: too heavy for cast'), { kind: 'skip', file: 'a b.vgm', out: 'cast' });
+  assert.deepStrictEqual(describeEvent('skip x.vgm: chip YM2610'), { kind: 'skip', file: 'x.vgm', chips: ['YM2610'], mixed: false });
+  assert.deepStrictEqual(describeEvent('skip x: y.vgm: chip SN76489 + YM2151 (mixed)'), { kind: 'skip', file: 'x: y.vgm', chips: ['SN76489 + YM2151'], mixed: true });
+  const h = 'skip ym2151_demo.vgm: too heavy for cast';
+  assert.strictEqual(say('zh-TW', h), '跳過 ym2151_demo.vgm：廣播（Auracast）這個輸出負擔太重，改用小尾巴可以播放');
+  assert.ok(say('en', h).includes('Broadcast (Auracast)') && say('en', h).includes('lighter output (DAC)'));
+  assert.ok(say('zh-CN', h).startsWith('跳过 ym2151_demo.vgm：') && say('zh-CN', h).includes('负载过高'));
+  assert.ok(!say('zh-TW', 'skip a.vgm: too heavy for dac').includes('改用'));   // the DAC is the lighter output already: no hint
+  assert.ok(say('en', 'skip a.vgm: too heavy for i2s').includes('too heavy for i2s'));
+  assert.strictEqual(say('zh-TW', 'skip x.vgm: chip YM2610'), '跳過 x.vgm：不支援的音源晶片 YM2610');
+  assert.strictEqual(say('zh-TW', 'skip x.vgm: chip A, B'), '跳過 x.vgm：不支援的音源晶片 A、B');
+  assert.ok(say('zh-CN', 'skip x.vgm: chip A (mixed)').endsWith('（混用）')); assert.ok(say('en', 'skip x.vgm: chip A, B').endsWith('A, B'));
+  I18N.setLang('en');
+  assert.deepStrictEqual(describeEvent('skip weird text'), { kind: 'raw', text: 'skip weird text' });   // unknown: shown as received
+  assert.strictEqual(describeEvent('skip a.vgm: chip ').kind, 'raw');
+  assert.ok(STRINGS['ev.skip.chip'] && STRINGS['list.sep']);
+});

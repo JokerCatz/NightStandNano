@@ -67,3 +67,27 @@ test('zip helpers, kHz', () => {
   assert.ok(F.inZip('/sdcard/packs/nes.zip')); assert.ok(F.inZip('/sdcard/packs/nes.zip/sub')); assert.ok(!F.inZip('/sdcard/packs')); assert.ok(!F.inZip('/sdcard/my.zipper'));
   assert.strictEqual(F.khz(96000), '96'); assert.strictEqual(F.khz(44100), '44.1'); assert.strictEqual(F.khz(384000), '384');
 });
+
+test('play: error detail (chips, too heavy, unknown) in three languages', async () => {
+  const { I18N } = await import('../src/js/core/i18n.js');
+  const say = (lang, e) => { I18N.setLang(lang); const v = F.playErrView(e, I18N.t('list.sep')); return I18N.t(v.key, v.p); };
+  let e = F.playError(['play: ESP_ERR_NOT_SUPPORTED unsupported chip YM2151, OKIM6295']);
+  assert.deepStrictEqual([e.key, e.chips], ['play.err.chip', ['YM2151', 'OKIM6295']]);
+  assert.strictEqual(say('zh-TW', e), '這個檔案需要裝置還不支援的音源晶片：YM2151、OKIM6295');
+  assert.ok(say('en', e).endsWith('YM2151, OKIM6295')); assert.ok(say('zh-CN', e).includes('音源芯片：YM2151、OKIM6295'));
+  e = F.playError(['play: ESP_ERR_NOT_SUPPORTED unsupported chip SN76489 + YM2151 (mixed)']);
+  assert.deepStrictEqual([e.key, e.chips], ['play.err.chipMixed', ['SN76489 + YM2151']]);
+  assert.strictEqual(say('zh-TW', e), '這個檔案需要裝置還不支援的音源晶片：SN76489 + YM2151（混用）');
+  assert.ok(say('en', e).endsWith('SN76489 + YM2151 (mixed)'));
+  e = F.playError(['play: ESP_ERR_NOT_SUPPORTED too heavy for cast']);
+  assert.deepStrictEqual([e.key, e.out], ['play.err.heavyTry', 'cast']);
+  assert.ok(say('zh-TW', e).includes('廣播（Auracast）') && say('zh-TW', e).includes('小尾巴')); assert.ok(say('zh-CN', e).includes('负载过高'));
+  e = F.playError(['play: ESP_ERR_NOT_SUPPORTED too heavy for dac']); assert.strictEqual(e.key, 'play.err.heavy');
+  e = F.playError(['play: ESP_ERR_NOT_SUPPORTED too heavy for i2s']); assert.ok(say('en', e).includes('too heavy for i2s'));
+  e = F.playError(['play: ESP_ERR_NOT_SUPPORTED weird new reason']);
+  assert.deepStrictEqual([e.key, e.detail], ['play.err.notsupD', 'weird new reason']); assert.ok(say('zh-TW', e).includes('weird new reason'));
+  e = F.playError(['play: ESP_FAIL oops']); assert.strictEqual(e.key, 'play.err.otherD');
+  e = F.playError(['play: ESP_ERR_NOT_SUPPORTED']); assert.deepStrictEqual(e, { code: 'ESP_ERR_NOT_SUPPORTED', key: 'play.err.notsup' });   // no detail: generic
+  e = F.playError(['play: ESP_ERR_NOT_SUPPORTED unsupported chip ']); assert.strictEqual(e.detail, 'unsupported chip');   // no chip names: shown as received
+  I18N.setLang('en');
+});

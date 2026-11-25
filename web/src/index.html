@@ -31,6 +31,8 @@
                            else connects after ~3 s); ?demo&clock=none starts it with no time (src=none), &tz=<POSIX TZ> sets its zone (default CST-8).
     ?demo&hw=spi|ledoff    the fake box reports the SD card in SPI mode / the LED disabled in the hardware settings; &hw=pending adds `hw pending 1`.
     ?demo&shed=1           the fake box reports st.fxshed=1 (heavy effects paused because it is busy); ?demo&dac=none makes `ratetest` refuse (no dac).
+    ?demo (Music page) /sdcard/Chiptune: ym2151_demo.vgm / arcade_ym2151.vgz answer the sound-chip refusal, mixed_sn_fm.vgz the "(mixed)" one,
+                           pc98_song.s98 "too heavy for cast"; "play this folder" there makes the box skip two tracks (events `skip ...`) after ~4 s and ~14 s.
     ?demo&evreset=1        the fake box restarts its event sequence (like a reboot) ~10 s after load; the events poll of Diagnostics must pick that up.
     ?demo&drop=<s>         drops the fake Bluetooth link <s> seconds after load (the page reconnects by itself); the first `out cast` in the
                            demo drops it too, like the real box; ?demo&cast=bad|half|fail fakes underflows / one stream down / a failing first `out cast`.
@@ -123,8 +125,8 @@
     <div class="card">
       <h3 data-i18n="files.title">檔案</h3>
       <div class="row"><strong class="grow" id="cwd">/sdcard</strong><button id="btnUp" class="ctl" disabled><svg class="ic" data-ic="up"></svg><span data-i18n="files.up">上一層</span></button><button id="btnPlayDir" class="ctl" disabled><svg class="ic" data-ic="play"></svg><span data-i18n="files.playDir">播放此資料夾</span></button></div>
+      <div class="rnote bad" id="playMsg" role="status"></div>   <!-- above the list: below it, it is off the screen on a phone -->
       <ul id="list" class="filelist"></ul>
-      <div class="rnote bad" id="playMsg" role="status"></div>
     </div>
     <div class="card">
       <h3 data-i18n="mode.title">播放方式</h3>

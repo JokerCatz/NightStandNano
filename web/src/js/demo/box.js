@@ -261,12 +261,25 @@ export function startDemo() {
   // the file tree for the Music page: /sdcard/packs has a zip archive (`ls` shows it with a trailing /, and lists its entries like a folder);
   // one entry in it is over 8 MB: listed, but `play` refuses it
   const TREE = { "/sdcard/packs": ["nes.zip/", "Loose Folder/", "08 - Bonus Track.flac"],
+    "/sdcard/Chiptune": ["01 - first.vgm", "02 - second.vgm", "arcade_ym2151.vgz", "mixed_sn_fm.vgz", "ym2151_demo.vgm", "opl_tune.s98", "pc98_song.s98"],
     "/sdcard/packs/nes.zip": ["01 - Title Theme.flac", "02 - Overworld.flac", "03 - Dungeon.flac", "99 - Full Soundtrack (huge).wav"] };
   const lsReply = cmd => TREE[cmd.slice(3).trim().replace(/\/+$/, "")] || ["packs/", "Albums/", "Chiptune/", "01 - Intro.flac", "02 - Harbour Lights.flac", "03 - Night Drive.flac", "04 - Slow Rain.mp3"];
   const playReply = cmd => {
     rtTick(); if (rtb.state === "running") return ["play: ESP_ERR_INVALID_STATE"];
     if (/nes\.zip\/.*huge/i.test(cmd)) return ["play: ESP_ERR_INVALID_SIZE"];
     if (/missing/i.test(cmd)) return ["play: ESP_ERR_NOT_FOUND"];
+    const path = cmd.slice(5).trim();
+    // sound-chip refusals and "too heavy" (the box answers `play: <code> <detail>`); .s98 and FM .vgm/.vgz play (st.fmt "FM")
+    if (/ym2151_demo|arcade_ym2151/i.test(path)) return ["play: ESP_ERR_NOT_SUPPORTED unsupported chip YM2151, OKIM6295"];
+    if (/mixed_sn_fm/i.test(path)) return ["play: ESP_ERR_NOT_SUPPORTED unsupported chip SN76489 + YM2151 (mixed)"];
+    if (/pc98_song/i.test(path)) return ["play: ESP_ERR_NOT_SUPPORTED too heavy for cast"];
+    if (/\.(s98|vgm|vgz)$/i.test(path)) fake.fmt = "FM"; else if (/\.\w+$/.test(path) && !/\.zip$/i.test(path)) fake.fmt = /\.mp3$/i.test(path) ? "MP3" : "FLAC";
+    // playing the Chiptune folder: two tracks are skipped a few seconds later (events `skip ...`), the file changes each time
+    if (/\/Chiptune$/i.test(path)) {
+      setTimeout(() => { fake.file = "02 - second.vgm"; evAdd("skip ym2151_demo.vgm: too heavy for cast"); }, 4000);
+      setTimeout(() => { fake.file = "01 - first.vgm"; evAdd("skip opm_demo.vgm: chip YM2610"); }, 14000);
+      fake.file = "01 - first.vgm";
+    }
     fake.st = "playing"; fake.bm = 0; return ["play: ESP_OK"];
   };
   const reply = cmd => {

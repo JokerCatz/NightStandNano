@@ -727,7 +727,18 @@
         "play.err.busy": { en: "Can't play right now (another job, such as the sample-rate test, is running)", "zh-TW": "\u73FE\u5728\u7121\u6CD5\u64AD\u653E\uFF08\u53EF\u80FD\u6B63\u5728\u9032\u884C\u53D6\u6A23\u7387\u6E2C\u8A66\u7B49\u5176\u4ED6\u5DE5\u4F5C\uFF09", "zh-CN": "\u73B0\u5728\u65E0\u6CD5\u64AD\u653E\uFF08\u53EF\u80FD\u6B63\u5728\u8FDB\u884C\u91C7\u6837\u7387\u6D4B\u8BD5\u7B49\u5176\u4ED6\u5DE5\u4F5C\uFF09" },
         "play.err.nomem": { en: "Not enough memory to play this file", "zh-TW": "\u8A18\u61B6\u9AD4\u4E0D\u8DB3\uFF0C\u7121\u6CD5\u64AD\u653E\u9019\u500B\u6A94\u6848", "zh-CN": "\u5185\u5B58\u4E0D\u8DB3\uFF0C\u65E0\u6CD5\u64AD\u653E\u8FD9\u4E2A\u6587\u4EF6" },
         "play.err.notsup": { en: "This format can't be played", "zh-TW": "\u4E0D\u652F\u63F4\u9019\u7A2E\u683C\u5F0F", "zh-CN": "\u4E0D\u652F\u6301\u8FD9\u79CD\u683C\u5F0F" },
-        "play.err.other": { en: "Could not play ({code})", "zh-TW": "\u7121\u6CD5\u64AD\u653E\uFF08{code}\uFF09", "zh-CN": "\u65E0\u6CD5\u64AD\u653E\uFF08{code}\uFF09" }
+        "play.err.other": { en: "Could not play ({code})", "zh-TW": "\u7121\u6CD5\u64AD\u653E\uFF08{code}\uFF09", "zh-CN": "\u65E0\u6CD5\u64AD\u653E\uFF08{code}\uFF09" },
+        "play.err.chip": { en: "This file needs sound chips the box doesn't support yet: {c}", "zh-TW": "\u9019\u500B\u6A94\u6848\u9700\u8981\u88DD\u7F6E\u9084\u4E0D\u652F\u63F4\u7684\u97F3\u6E90\u6676\u7247\uFF1A{c}", "zh-CN": "\u8FD9\u4E2A\u6587\u4EF6\u9700\u8981\u8BBE\u5907\u6682\u4E0D\u652F\u6301\u7684\u97F3\u6E90\u82AF\u7247\uFF1A{c}" },
+        "play.err.chipMixed": { en: "This file needs sound chips the box doesn't support yet: {c} (mixed)", "zh-TW": "\u9019\u500B\u6A94\u6848\u9700\u8981\u88DD\u7F6E\u9084\u4E0D\u652F\u63F4\u7684\u97F3\u6E90\u6676\u7247\uFF1A{c}\uFF08\u6DF7\u7528\uFF09", "zh-CN": "\u8FD9\u4E2A\u6587\u4EF6\u9700\u8981\u8BBE\u5907\u6682\u4E0D\u652F\u6301\u7684\u97F3\u6E90\u82AF\u7247\uFF1A{c}\uFF08\u6DF7\u7528\uFF09" },
+        "play.err.heavy": { en: "This file is too heavy for {o}", "zh-TW": "{o}\u9019\u500B\u8F38\u51FA\u8CA0\u64D4\u592A\u91CD\uFF0C\u7121\u6CD5\u64AD\u653E\u9019\u500B\u6A94\u6848", "zh-CN": "{o}\u8FD9\u4E2A\u8F93\u51FA\u8D1F\u8F7D\u8FC7\u9AD8\uFF0C\u65E0\u6CD5\u64AD\u653E\u8FD9\u4E2A\u6587\u4EF6" },
+        "play.err.heavyTry": { en: "This file is too heavy for {o}; a lighter output ({d}) can play it", "zh-TW": "{o}\u9019\u500B\u8F38\u51FA\u8CA0\u64D4\u592A\u91CD\uFF0C\u7121\u6CD5\u64AD\u653E\u9019\u500B\u6A94\u6848\uFF1B\u6539\u7528{d}\u53EF\u4EE5\u64AD\u653E", "zh-CN": "{o}\u8FD9\u4E2A\u8F93\u51FA\u8D1F\u8F7D\u8FC7\u9AD8\uFF0C\u65E0\u6CD5\u64AD\u653E\u8FD9\u4E2A\u6587\u4EF6\uFF1B\u6362\u7528{d}\u53EF\u4EE5\u64AD\u653E" },
+        "play.err.notsupD": { en: "This format can't be played ({x})", "zh-TW": "\u4E0D\u652F\u63F4\u9019\u7A2E\u683C\u5F0F\uFF08{x}\uFF09", "zh-CN": "\u4E0D\u652F\u6301\u8FD9\u79CD\u683C\u5F0F\uFF08{x}\uFF09" },
+        "play.err.otherD": { en: "Could not play ({code}: {x})", "zh-TW": "\u7121\u6CD5\u64AD\u653E\uFF08{code}\uFF1A{x}\uFF09", "zh-CN": "\u65E0\u6CD5\u64AD\u653E\uFF08{code}\uFF1A{x}\uFF09" },
+        "list.sep": { en: ", ", "zh-TW": "\u3001", "zh-CN": "\u3001" },
+        "ev.skip.heavy": { en: "Skipped {f}: too heavy for {o}", "zh-TW": "\u8DF3\u904E {f}\uFF1A{o}\u9019\u500B\u8F38\u51FA\u8CA0\u64D4\u592A\u91CD", "zh-CN": "\u8DF3\u8FC7 {f}\uFF1A{o}\u8FD9\u4E2A\u8F93\u51FA\u8D1F\u8F7D\u8FC7\u9AD8" },
+        "ev.skip.heavyTry": { en: "Skipped {f}: too heavy for {o}; a lighter output ({d}) can play it", "zh-TW": "\u8DF3\u904E {f}\uFF1A{o}\u9019\u500B\u8F38\u51FA\u8CA0\u64D4\u592A\u91CD\uFF0C\u6539\u7528{d}\u53EF\u4EE5\u64AD\u653E", "zh-CN": "\u8DF3\u8FC7 {f}\uFF1A{o}\u8FD9\u4E2A\u8F93\u51FA\u8D1F\u8F7D\u8FC7\u9AD8\uFF0C\u6362\u7528{d}\u53EF\u4EE5\u64AD\u653E" },
+        "ev.skip.chip": { en: "Skipped {f}: unsupported sound chip {c}", "zh-TW": "\u8DF3\u904E {f}\uFF1A\u4E0D\u652F\u63F4\u7684\u97F3\u6E90\u6676\u7247 {c}", "zh-CN": "\u8DF3\u8FC7 {f}\uFF1A\u4E0D\u652F\u6301\u7684\u97F3\u6E90\u82AF\u7247 {c}" },
+        "ev.skip.chipMixed": { en: "Skipped {f}: unsupported sound chip {c} (mixed)", "zh-TW": "\u8DF3\u904E {f}\uFF1A\u4E0D\u652F\u63F4\u7684\u97F3\u6E90\u6676\u7247 {c}\uFF08\u6DF7\u7528\uFF09", "zh-CN": "\u8DF3\u8FC7 {f}\uFF1A\u4E0D\u652F\u6301\u7684\u97F3\u6E90\u82AF\u7247 {c}\uFF08\u6DF7\u7528\uFF09" }
       };
     }
   });
@@ -1440,16 +1451,50 @@
     }
     return null;
   }
+  function parseChips(s) {
+    let x = String(s).trim(), mixed = false;
+    const m = /\s*\(mixed\)$/i.exec(x);
+    if (m) {
+      mixed = true;
+      x = x.slice(0, m.index);
+    }
+    const chips = x.split(/\s*,\s*/).filter(Boolean);
+    return chips.length ? { chips, mixed } : null;
+  }
   function playError(lines) {
     for (const l of lines) {
-      const m = /^play:\s*(\S+)/.exec(l);
+      const m = /^play:\s*(\S+)(?:\s+(.*\S))?\s*$/.exec(l);
       if (!m) continue;
       if (m[1] === "ESP_OK") return null;
-      return { code: m[1], key: PLAY_ERR[m[1]] || "play.err.other" };
+      const e = { code: m[1], key: PLAY_ERR[m[1]] || "play.err.other" }, d4 = m[2];
+      if (d4) {
+        const out = heavyDetail(d4), c = chipDetail(d4);
+        if (out) {
+          e.key = out === "dac" ? "play.err.heavy" : "play.err.heavyTry";
+          e.out = out;
+        } else if (c) {
+          e.key = c.mixed ? "play.err.chipMixed" : "play.err.chip";
+          e.chips = c.chips;
+        } else if (e.key === "play.err.notsup" || e.key === "play.err.other") {
+          e.key += "D";
+          e.detail = d4;
+        }
+      }
+      return e;
     }
     return null;
   }
-  var numify, VERDICTS, PLAY_ERR, khz, inZip, isZipEntry;
+  function playErrView(e, sep) {
+    const p = { code: e.code };
+    if (e.chips) p.c = e.chips.join(sep);
+    if (e.out) {
+      p.o = outParam(e.out);
+      p.d = { t: "out.dac" };
+    }
+    if (e.detail) p.x = e.detail;
+    return { key: e.key, p };
+  }
+  var numify, VERDICTS, PLAY_ERR, OUT_KEYS, outParam, chipDetail, heavyDetail, khz, inZip, isZipEntry;
   var init_fw = __esm({
     "src/js/lib/fw.js"() {
       numify = (o) => {
@@ -1465,29 +1510,139 @@
         ESP_ERR_NO_MEM: "play.err.nomem",
         ESP_ERR_NOT_SUPPORTED: "play.err.notsup"
       };
+      OUT_KEYS = { dac: "out.dac", bt: "out.bt", cast: "out.cast" };
+      outParam = (o) => OUT_KEYS[o] ? { t: OUT_KEYS[o] } : o;
+      chipDetail = (d4) => {
+        const m = /^(?:unsupported )?chip\s+(.+)$/.exec(d4.trim());
+        return m ? parseChips(m[1]) : null;
+      };
+      heavyDetail = (d4) => {
+        const m = /^too heavy for (\S+)$/.exec(d4.trim());
+        return m ? m[1] : null;
+      };
       khz = (hz) => String(+(hz / 1e3).toFixed(1));
       inZip = (p) => /\.zip(\/|$)/i.test(p);
       isZipEntry = (name) => /\.zip\/$/i.test(name);
     }
   });
 
+  // src/js/lib/events.js
+  function parseEvents(lines) {
+    const entries = [];
+    let next = null;
+    for (const l of lines || []) {
+      let m;
+      if (m = /^ev end (\d+)\s*$/.exec(l)) next = +m[1];
+      else if (m = /^ev (\d+) (\d+) (.*\S)\s*$/.exec(l)) entries.push({ seq: +m[1], age: +m[2], text: m[3] });
+    }
+    return { entries, next };
+  }
+  function describeEvent(text) {
+    let m;
+    if ((m = /^skip (.+?): (too heavy for \S+)$/.exec(text)) && heavyDetail(m[2])) return { kind: "skip", file: m[1], out: heavyDetail(m[2]) };
+    if (m = /^skip (.+): (chip\s+.+)$/.exec(text)) {
+      const c = chipDetail(m[2]);
+      if (c) return { kind: "skip", file: m[1], chips: c.chips, mixed: c.mixed };
+    }
+    if (m = /^wired ([cpm])([123h]) (\S+)$/.exec(text)) return { kind: "wired", b: m[1], g: m[2], a: m[3] };
+    if (m = /^bt 0x([0-9a-fA-F]{1,4}) (\S+)$/.exec(text)) {
+      const n = parseInt(m[1], 16);
+      return { kind: "bt", code: "0x" + n.toString(16).toUpperCase().padStart(2, "0"), name: AVRCP_NAMES[n] || null, a: m[2] };
+    }
+    return { kind: "raw", text };
+  }
+  function skipView(d4, sep) {
+    const p = { f: d4.file };
+    if (d4.chips) {
+      p.c = d4.chips.join(sep);
+      return { key: d4.mixed ? "ev.skip.chipMixed" : "ev.skip.chip", p };
+    }
+    p.o = outParam(d4.out);
+    p.d = { t: "out.dac" };
+    return { key: d4.out === "dac" ? "ev.skip.heavy" : "ev.skip.heavyTry", p };
+  }
+  function applyEvents(st2, lines, now) {
+    const { entries, next } = parseEvents(lines);
+    if (next == null) return { added: 0, restart: false };
+    if (st2.next != null && next < st2.next) {
+      st2.next = null;
+      return { added: 0, restart: true };
+    }
+    for (const e of entries) st2.list.unshift({ id: ++st2.id, at: now - e.age * 1e3, text: e.text });
+    if (st2.list.length > MAX_EVENTS) st2.list.length = MAX_EVENTS;
+    st2.next = next;
+    return { added: entries.length, restart: false };
+  }
+  var MAX_EVENTS, AVRCP_NAMES, newEventState, eventsCmd;
+  var init_events = __esm({
+    "src/js/lib/events.js"() {
+      init_fw();
+      MAX_EVENTS = 100;
+      AVRCP_NAMES = { 65: "volup", 66: "voldn", 67: "mute", 68: "play", 69: "stop", 70: "pause", 72: "rew", 73: "ff", 75: "fwd", 76: "bwd" };
+      newEventState = () => ({ next: null, list: [], id: 0 });
+      eventsCmd = (st2) => st2.next == null ? "events" : "events " + st2.next;
+    }
+  });
+
+  // src/js/core/evfeed.js
+  async function fetchEvents(force) {
+    if (app.scanBusy || app.link !== "on" || document.hidden) return;
+    if (busy) {
+      if (force === true) again = true;
+      return;
+    }
+    busy = true;
+    try {
+      for (let i = 0; i < 2; i++) {
+        const r = await sendQuiet(eventsCmd(EV)), now = Date.now();
+        if (!r.length) break;
+        const res = applyEvents(EV, r, now);
+        if (res.added || res.restart || force) emit("events", { added: EV.list.slice(0, res.added), restart: res.restart, force: force === true });
+        if (!res.restart) break;
+      }
+    } finally {
+      busy = false;
+      if (again) {
+        again = false;
+        fetchEvents(true);
+      }
+    }
+  }
+  var EV, busy, again;
+  var init_evfeed = __esm({
+    "src/js/core/evfeed.js"() {
+      init_app();
+      init_link();
+      init_events();
+      EV = newEventState();
+      busy = false;
+      again = false;
+    }
+  });
+
   // src/js/pages/music.js
-  function playMsg(err) {
+  function showMsg() {
+    const v = msgView(t2("list.sep"));
+    setT2($("playMsg"), v.key, v.p);
+  }
+  function playMsg(view) {
     const m = $("playMsg");
     clearTimeout(msgTimer);
-    if (!err) {
+    msgView = view;
+    if (!view) {
       m.textContent = "";
       m.removeAttribute("data-i18n");
       m.removeAttribute("data-i18n-p");
       return;
     }
-    setT2(m, err.key, { code: err.code });
+    showMsg();
     msgTimer = setTimeout(() => playMsg(null), 8e3);
   }
   async function play(path) {
     playMsg(null);
     const r = await send("play " + path);
-    playMsg(playError(r));
+    const err = playError(r);
+    playMsg(err && ((sep) => playErrView(err, sep)));
     refreshStatus();
   }
   function playDirLabel() {
@@ -1534,20 +1689,46 @@
       app.gapUntil = 0;
       refreshStatus();
     };
+    const watching = () => app.link === "on" && app.route === "music" && !!app.state && app.state.st === "playing";
+    let lastFile = null;
+    setInterval(() => {
+      if (watching()) fetchEvents();
+    }, 5e3);
+    on("events", ({ added }) => {
+      if (app.route !== "music") return;
+      for (const e of added) {
+        const d4 = describeEvent(e.text);
+        if (d4.kind === "skip" && e.at >= Date.now() - 2e4) {
+          playMsg((sep) => skipView(d4, sep));
+          break;
+        }
+      }
+    });
+    on("lang", () => {
+      if (msgView) showMsg();
+    });
     on("status", (state) => {
+      if (state.file !== lastFile) {
+        const was = lastFile;
+        lastFile = state.file;
+        if (was !== null && watching()) fetchEvents();
+      }
       segSet("mode", MODES[state.mode] || "folder");
       if (typeof state.rg === "number") segSet("rg", RGS[state.rg] || "off");
       for (const li of $("list").children) li.classList.toggle("cur", !!state.file && li.dataset.name === state.file && state.st !== "idle");
     });
   }
-  var msgTimer;
+  var msgTimer, msgView;
   var init_music = __esm({
     "src/js/pages/music.js"() {
       init_app();
       init_link();
       init_status();
       init_fw();
+      init_events();
+      init_evfeed();
       msgTimer = 0;
+      msgView = null;
     }
   });
 
@@ -7343,48 +7524,6 @@
     }
   });
 
-  // src/js/lib/events.js
-  function parseEvents(lines) {
-    const entries = [];
-    let next = null;
-    for (const l of lines || []) {
-      let m;
-      if (m = /^ev end (\d+)\s*$/.exec(l)) next = +m[1];
-      else if (m = /^ev (\d+) (\d+) (.*\S)\s*$/.exec(l)) entries.push({ seq: +m[1], age: +m[2], text: m[3] });
-    }
-    return { entries, next };
-  }
-  function describeEvent(text) {
-    let m;
-    if (m = /^wired ([cpm])([123h]) (\S+)$/.exec(text)) return { kind: "wired", b: m[1], g: m[2], a: m[3] };
-    if (m = /^bt 0x([0-9a-fA-F]{1,4}) (\S+)$/.exec(text)) {
-      const n = parseInt(m[1], 16);
-      return { kind: "bt", code: "0x" + n.toString(16).toUpperCase().padStart(2, "0"), name: AVRCP_NAMES[n] || null, a: m[2] };
-    }
-    return { kind: "raw", text };
-  }
-  function applyEvents(st2, lines, now) {
-    const { entries, next } = parseEvents(lines);
-    if (next == null) return { added: 0, restart: false };
-    if (st2.next != null && next < st2.next) {
-      st2.next = null;
-      return { added: 0, restart: true };
-    }
-    for (const e of entries) st2.list.unshift({ id: ++st2.id, at: now - e.age * 1e3, text: e.text });
-    if (st2.list.length > MAX_EVENTS) st2.list.length = MAX_EVENTS;
-    st2.next = next;
-    return { added: entries.length, restart: false };
-  }
-  var MAX_EVENTS, AVRCP_NAMES, newEventState, eventsCmd;
-  var init_events = __esm({
-    "src/js/lib/events.js"() {
-      MAX_EVENTS = 100;
-      AVRCP_NAMES = { 65: "volup", 66: "voldn", 67: "mute", 68: "play", 69: "stop", 70: "pause", 72: "rew", 73: "ff", 75: "fwd", 76: "bwd" };
-      newEventState = () => ({ next: null, list: [], id: 0 });
-      eventsCmd = (st2) => st2.next == null ? "events" : "events " + st2.next;
-    }
-  });
-
   // src/js/pages/diag.js
   function pushHist(st2) {
     const add = (a, v) => {
@@ -7428,6 +7567,10 @@
       const k2 = d4.name ? t2("ev.k." + d4.name) : t2("ev.k.code", { code: d4.code });
       return t2("ev.bt", { k: d4.name && d4.a === "ignored" ? k2 + " (" + d4.code + ")" : k2, a: evAction(d4.a) });
     }
+    if (d4.kind === "skip") {
+      const v = skipView(d4, t2("list.sep"));
+      return t2(v.key, v.p);
+    }
     return d4.text;
   }
   function renderEvents() {
@@ -7442,29 +7585,6 @@
     }
     $("evEmpty").hidden = EV.list.length > 0;
   }
-  async function pollEvents(force) {
-    if (app.scanBusy || app.link !== "on" || document.hidden || app.route !== "settings/diag") return;
-    if (evBusy) {
-      if (force === true) evAgain = true;
-      return;
-    }
-    evBusy = true;
-    try {
-      for (let i = 0; i < 2; i++) {
-        const r = await sendQuiet(eventsCmd(EV)), now = Date.now();
-        if (!r.length) break;
-        const res = applyEvents(EV, r, now);
-        if (res.added || res.restart || force) renderEvents();
-        if (!res.restart) break;
-      }
-    } finally {
-      evBusy = false;
-      if (evAgain) {
-        evAgain = false;
-        pollEvents(true);
-      }
-    }
-  }
   function initDiag() {
     $("evRefresh").onclick = () => pollEvents(true);
     $("evClear").onclick = () => {
@@ -7472,6 +7592,7 @@
       renderEvents();
     };
     setInterval(pollEvents, 3e3);
+    on("events", renderEvents);
     on("route", (key) => {
       if (key === "settings/diag") pollEvents(true);
     });
@@ -7490,32 +7611,32 @@
     window.addEventListener("resize", drawSparks);
     if (window.matchMedia) window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", drawSparks);
   }
-  var BUILD, HIST, HIST_N, EV, evBusy, evAgain, pad, clock;
+  var BUILD, HIST, HIST_N, pad, clock, pollEvents;
   var init_diag = __esm({
     "src/js/pages/diag.js"() {
       init_app();
       init_eq();
-      init_link();
       init_keys();
       init_events();
-      BUILD = true ? "ec28034a" : "dev";
+      init_evfeed();
+      BUILD = true ? "cd8570e3" : "dev";
       HIST = { c0: [], c1: [], mem: [] };
       HIST_N = 120;
-      EV = newEventState();
-      evBusy = false;
-      evAgain = false;
       pad = (n) => String(n).padStart(2, "0");
       clock = (ms) => {
         const d4 = new Date(ms);
         return pad(d4.getHours()) + ":" + pad(d4.getMinutes()) + ":" + pad(d4.getSeconds());
+      };
+      pollEvents = (force) => {
+        if (app.route === "settings/diag") fetchEvents(force);
       };
     }
   });
 
   // src/js/pages/set-output.js
   async function readStatus() {
-    if (busy) return;
-    busy = true;
+    if (busy2) return;
+    busy2 = true;
     try {
       const lines = await send("ratetest status");
       if (!lines.length && app.link !== "on") return;
@@ -7526,7 +7647,7 @@
       } else if (lines.length) msg = { key: "rt.unsupported" };
       renderRt();
     } finally {
-      busy = false;
+      busy2 = false;
     }
     schedule();
   }
@@ -7662,7 +7783,7 @@
     on("lang", renderRt);
     renderRt();
   }
-  var here, rt, msg, timer, busy, dacUntil;
+  var here, rt, msg, timer, busy2, dacUntil;
   var init_set_output = __esm({
     "src/js/pages/set-output.js"() {
       init_app();
@@ -7673,7 +7794,7 @@
       rt = null;
       msg = null;
       timer = 0;
-      busy = false;
+      busy2 = false;
       dacUntil = 0;
     }
   });
@@ -8544,6 +8665,7 @@
     };
     const TREE = {
       "/sdcard/packs": ["nes.zip/", "Loose Folder/", "08 - Bonus Track.flac"],
+      "/sdcard/Chiptune": ["01 - first.vgm", "02 - second.vgm", "arcade_ym2151.vgz", "mixed_sn_fm.vgz", "ym2151_demo.vgm", "opl_tune.s98", "pc98_song.s98"],
       "/sdcard/packs/nes.zip": ["01 - Title Theme.flac", "02 - Overworld.flac", "03 - Dungeon.flac", "99 - Full Soundtrack (huge).wav"]
     };
     const lsReply = (cmd) => TREE[cmd.slice(3).trim().replace(/\/+$/, "")] || ["packs/", "Albums/", "Chiptune/", "01 - Intro.flac", "02 - Harbour Lights.flac", "03 - Night Drive.flac", "04 - Slow Rain.mp3"];
@@ -8552,6 +8674,23 @@
       if (rtb.state === "running") return ["play: ESP_ERR_INVALID_STATE"];
       if (/nes\.zip\/.*huge/i.test(cmd)) return ["play: ESP_ERR_INVALID_SIZE"];
       if (/missing/i.test(cmd)) return ["play: ESP_ERR_NOT_FOUND"];
+      const path = cmd.slice(5).trim();
+      if (/ym2151_demo|arcade_ym2151/i.test(path)) return ["play: ESP_ERR_NOT_SUPPORTED unsupported chip YM2151, OKIM6295"];
+      if (/mixed_sn_fm/i.test(path)) return ["play: ESP_ERR_NOT_SUPPORTED unsupported chip SN76489 + YM2151 (mixed)"];
+      if (/pc98_song/i.test(path)) return ["play: ESP_ERR_NOT_SUPPORTED too heavy for cast"];
+      if (/\.(s98|vgm|vgz)$/i.test(path)) fake.fmt = "FM";
+      else if (/\.\w+$/.test(path) && !/\.zip$/i.test(path)) fake.fmt = /\.mp3$/i.test(path) ? "MP3" : "FLAC";
+      if (/\/Chiptune$/i.test(path)) {
+        setTimeout(() => {
+          fake.file = "02 - second.vgm";
+          evAdd("skip ym2151_demo.vgm: too heavy for cast");
+        }, 4e3);
+        setTimeout(() => {
+          fake.file = "01 - first.vgm";
+          evAdd("skip opm_demo.vgm: chip YM2610");
+        }, 14e3);
+        fake.file = "01 - first.vgm";
+      }
       fake.st = "playing";
       fake.bm = 0;
       return ["play: ESP_OK"];
@@ -9342,7 +9481,7 @@
       setT4(e, key, params);
       return e;
     };
-    let T = null, at = 0, syncing = null, busy2 = false, msg2 = null;
+    let T = null, at = 0, syncing = null, busy3 = false, msg2 = null;
     const clockV = el4("span"), srcV = el4("span"), zoneV = el4("span");
     const kv3 = el4("div", "ckv");
     kv3.append(elT2("span", "", "time.k.now"), clockV, elT2("span", "", "time.k.src"), srcV, elT2("span", "", "time.k.zone"), zoneV);
@@ -9369,7 +9508,7 @@
     }
     function render3() {
       const on2 = isOn();
-      syncBtn.disabled = !on2 || busy2;
+      syncBtn.disabled = !on2 || busy3;
       if (!T) {
         setRaw4(clockV, "\u2014");
         setRaw4(srcV, "\u2014");
@@ -9423,8 +9562,8 @@
       return syncing;
     }
     async function syncNow() {
-      if (busy2 || !isOn()) return;
-      busy2 = true;
+      if (busy3 || !isOn()) return;
+      busy3 = true;
       render3();
       setMsg(null);
       try {
@@ -9436,7 +9575,7 @@
         else setMsg("time.res.noreply", null, "bad");
         await read2();
       } finally {
-        busy2 = false;
+        busy3 = false;
         render3();
       }
     }
@@ -9450,12 +9589,12 @@
     };
     function reset() {
       T = null;
-      busy2 = false;
+      busy3 = false;
       setMsg(null);
       render3();
     }
     setInterval(() => {
-      if (isOn() && tabOpen() && !document.hidden && !syncing && !busy2) read2();
+      if (isOn() && tabOpen() && !document.hidden && !syncing && !busy3) read2();
     }, 3e4);
     render3();
     return {
