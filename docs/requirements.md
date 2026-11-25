@@ -159,3 +159,4 @@
 - **主人裁定（2026-11-25）**：樂器模式不做；遊戲不做；燒機頁連線時機器會重新啟動，可以接受。HLS 電台待主人了解後決定。
 - **授權與發布（主人 2026-11-25）**：授權 LGPL-2.1-or-later（與 JukeDial、tunetap 相同；`LICENSE`、`THIRD_PARTY_NOTICES.md`）；第一版 `v0.1.0`；repo 公開於 `github.com/JokerCatz/NightStandNano`；Pages：控制頁在根路徑、燒機頁在 `flash/`；repo 有自己的 release（`tools/release.py`、`tools/publish_pages.sh`、`tools/publish_release.sh`）。裝置可以放在任何地方，不限床頭，「NightStand Nano」只是名字。
 - **Waveshare ESP32-S31-Zero（主人 2026-11-25）**：先當研究素材記錄在 `docs/research/waveshare-esp32-s31-zero.md`，暫緩；之後可能有更多硬體可選，到時再評估。它只有一個 Type-C 埠，主人認為有問題。
+- **主人裁定（2026-11-25）**：公開提交的作者信箱用主人的 Gmail。HLS 電台：能支援就支援。repo 已公開（`JokerCatz/NightStandNano`），歷史從一筆初始提交開始。
