@@ -12,6 +12,7 @@
 #include "esp_a2dp_api.h"
 #include "esp_avrc_api.h"
 #include "player.h"
+#include "events.h"
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
 #include "esp_audio_dec.h"
@@ -489,17 +490,19 @@ static void avrc_tg_cb(esp_avrc_tg_cb_event_t ev, esp_avrc_tg_cb_param_t *p)
 {
     if (ev != ESP_AVRC_TG_PASSTHROUGH_CMD_EVT || p->psth_cmd.key_state != ESP_AVRC_PT_CMD_STATE_PRESSED) return;
     nsn_player_info_t in; nsn_player_info(&in);
+    const char *did = NULL;                          /* what the box did; NULL = a key it does not act on (still recorded: it tells what the headphones send) */
     switch (p->psth_cmd.key_code) {
-    case ESP_AVRC_PT_CMD_PLAY: nsn_player_pause(false); break;
-    case ESP_AVRC_PT_CMD_PAUSE: nsn_player_pause(true); break;
-    case ESP_AVRC_PT_CMD_STOP: nsn_player_pause(true); break;
-    case ESP_AVRC_PT_CMD_FORWARD: nsn_player_skip(1); break;
-    case ESP_AVRC_PT_CMD_BACKWARD: nsn_player_skip(-1); break;
-    case ESP_AVRC_PT_CMD_VOL_UP: nsn_player_set_volume(nsn_player_volume() + 5 > 100 ? 100 : nsn_player_volume() + 5); break;
-    case ESP_AVRC_PT_CMD_VOL_DOWN: nsn_player_set_volume(nsn_player_volume() < 5 ? 0 : nsn_player_volume() - 5); break;
-    default: return;
+    case ESP_AVRC_PT_CMD_PLAY: nsn_player_pause(false); did = "play"; break;
+    case ESP_AVRC_PT_CMD_PAUSE: nsn_player_pause(true); did = "pause"; break;
+    case ESP_AVRC_PT_CMD_STOP: nsn_player_pause(true); did = "pause"; break;
+    case ESP_AVRC_PT_CMD_FORWARD: nsn_player_skip(1); did = "next"; break;
+    case ESP_AVRC_PT_CMD_BACKWARD: nsn_player_skip(-1); did = "prev"; break;
+    case ESP_AVRC_PT_CMD_VOL_UP: nsn_player_set_volume(nsn_player_volume() + 5 > 100 ? 100 : nsn_player_volume() + 5); did = "vol+"; break;
+    case ESP_AVRC_PT_CMD_VOL_DOWN: nsn_player_set_volume(nsn_player_volume() < 5 ? 0 : nsn_player_volume() - 5); did = "vol-"; break;
+    default: break;
     }
-    ESP_LOGI(TAG, "avrcp key 0x%02x", p->psth_cmd.key_code);
+    ESP_LOGI(TAG, "avrcp key 0x%02x -> %s", p->psth_cmd.key_code, did ? did : "ignored");
+    nsn_event("bt 0x%02x %s", p->psth_cmd.key_code, did ? did : "ignored");
 }
 
 /* ======================= role switching (worker task) ======================= */

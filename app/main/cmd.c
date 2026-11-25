@@ -28,6 +28,7 @@
 #include "night.h"
 #include "cast.h"
 #include "keys.h"
+#include "events.h"
 #include "bt_ctl.h"
 #include "card_svc.h"
 #include "cardfmt.h"
@@ -525,6 +526,14 @@ static void h_keys(o_t *o, char *args)
     nsn_keys_last(l, sizeof l); say(o, "%s", l);
 }
 
+/* events [from_seq]: recent things the box noticed (events.h) */
+static void h_events(o_t *o, char *args)
+{
+    unsigned from = args ? (unsigned)strtoul(args, NULL, 10) : 0, seq; int age; char t[64];
+    for (int i = 0; nsn_events_get(from, i, &seq, &age, t, sizeof t); i++) say(o, "ev %u %d %s", seq, age, t);
+    say(o, "ev end %u", nsn_events_next_seq());
+}
+
 static void h_cast(o_t *o, char *args)
 {
     (void)args;
@@ -894,6 +903,7 @@ static const cmd_t k_cmds[] = {
     { "lrc",     h_lrc,     false },
     { "cast",    h_cast,    false },
     { "keys",    h_keys,    false },
+    { "events",  h_events,  false },
     { "memwatch", h_memwatch, true },
     { "rg",      h_rg,      false },
     { "next",    h_next,    false },

@@ -9,6 +9,7 @@
 #include "freertos/task.h"
 #include "freertos/queue.h"
 #include "player.h"
+#include "events.h"
 #include "settings.h"
 
 static const char *TAG = "keys";
@@ -51,6 +52,7 @@ static void act(int k, int g)
     int a = s_map[k][g];
     snprintf(s_last, sizeof s_last, "%c%c", BTN[k], "123h"[g]); s_last_act = (uint8_t)a; s_last_us = esp_timer_get_time();
     ESP_LOGI(TAG, "button %c gesture %c -> %s", BTN[k], "123h"[g], ANAME[a]);
+    nsn_event("wired %c%c %s", BTN[k], "123h"[g], ANAME[a]);
     nsn_player_info_t p;
     switch (a) {
     case A_PLAY:
